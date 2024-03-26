@@ -346,6 +346,7 @@ export default Vue.extend({
         { event: AppEvent.promptQueryImportFromComputer, handler: this.handlePromptQueryImportFromComputer },
         { event: AppEvent.promptQueryExport, handler: this.handlePromptQueryExport },
         { event: AppEvent.beginImport, handler: this.beginImport },
+        { event: AppEvent.promptSqlFilesImport, handler: this.promptSqlFilesImport },
       ]
     },
     lastTab() {
@@ -776,6 +777,9 @@ export default Vue.extend({
         console.error(e)
         this.$noty.error('Query could not be exported. See console for details.', { killer: notyQueue })
       }
+    },
+    async promptSqlFilesImport() {
+
     },
     async loadRoutineCreate(routine) {
       const result = await this.connection.getRoutineCreateScript(routine.name, routine.type, routine.schema)

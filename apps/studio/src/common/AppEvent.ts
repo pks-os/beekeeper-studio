@@ -25,6 +25,7 @@ export enum AppEvent {
   promptQueryImportFromComputer = "q_import_from_computer",
   promptQueryExport = 'q_export',
   promptConnectionImport = 'cloud_c_import',
+  promptSqlFilesImport = 'q_files_import',
   enterLicense = 'enter_license',
   hideEntity = 'hideEntity',
   hideSchema = 'hideSchema',
