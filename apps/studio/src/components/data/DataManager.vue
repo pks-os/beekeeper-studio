@@ -6,9 +6,8 @@ import _ from 'lodash'
 import {DataModules} from '@/store/DataModules'
 import Vue from 'vue'
 import { mapGetters, mapState } from 'vuex'
-import globals from '@/common/globals'
 
-  
+
 export default Vue.extend({
   data: () => ({
     interval: null,
@@ -16,7 +15,7 @@ export default Vue.extend({
   mounted() {
     this.mountAndRefresh()
     this.$store.commit('storeInitialized', true)
-    this.interval = setInterval(this.poll, globals.dataCheckInterval)
+    this.interval = setInterval(this.poll, this.$bksConfig.general.dataSyncInterval)
   },
   beforeDestroy() {
     if (this.interval) clearInterval(this.interval);
@@ -41,12 +40,12 @@ export default Vue.extend({
         this.activeTab.title,
       ]
     }
-    
+
   },
   watch: {
     workspaceId() {
       this.mountAndRefresh()
-      this.$store.dispatch('loadUsedConfigs')
+      this.$store.dispatch('data/usedconnections/load')
       this.$store.dispatch('pinnedConnections/loadPins')
     },
     importantTabStuff: {
@@ -69,9 +68,9 @@ export default Vue.extend({
       })
     },
     mountAndRefresh() {
-      console.log('mount and refresh')
+      console.log('mount and refresh: ', this.workspace)
       if (!this.workspace) return
-      const scope = 'local'
+      const scope = this.$store.getters.isUltimate ? this.workspace.type : 'local'
       DataModules.forEach((module) => {
         const choice = module[scope]
         if (!choice) throw new Error(`No module defined for ${scope} - ${module.path}`)

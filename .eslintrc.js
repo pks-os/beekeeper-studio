@@ -13,8 +13,6 @@ module.exports = {
     "plugin:vue/essential",
     "plugin:vue/strongly-recommended",
     "plugin:@typescript-eslint/recommended",
-    "@vue/typescript",
-    "@vue/eslint-config-typescript"
   ],
   "rules": {
     "no-console": "off",
@@ -26,7 +24,8 @@ module.exports = {
     "@typescript-eslint/explicit-module-boundary-types": "off",
     "vue/require-prop-types": "off",
     "vue/require-default-prop": "off",
-    "@typescript-eslint/no-non-null-assertion": "off"
+    "@typescript-eslint/no-non-null-assertion": "off",
+    "vue/max-attributes-per-line": "off"
   },
   "parser": "vue-eslint-parser",
   "parserOptions": {

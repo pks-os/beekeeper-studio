@@ -1,59 +1,19 @@
-
 import { Entity, Column, BeforeInsert, BeforeUpdate } from "typeorm"
-
 import { ApplicationEntity } from './application_entity'
-import { resolveHomePathToAbsolute } from '../../utils'
 import { loadEncryptionKey } from '../../encryption_key'
 import { ConnectionString } from 'connection-string'
-import log from 'electron-log'
-import { EncryptTransformer } from '../transformers/Transformers'
+import log from '@bksLogger'
+import { AzureCredsEncryptTransformer, EncryptTransformer } from '../transformers/Transformers'
 import { IConnection, SshMode } from '@/common/interfaces/IConnection'
-import { ConnectionType } from "@/lib/db/types"
+import { AzureAuthOptions, BigQueryOptions, CassandraOptions, ConnectionType, ConnectionTypes, LibSQLOptions, RedshiftOptions, SQLAnywhereOptions } from "@/lib/db/types"
+import { resolveHomePathToAbsolute } from "@/handlers/utils"
 
 const encrypt = new EncryptTransformer(loadEncryptionKey())
-
-export const ConnectionTypes = [
-  { name: 'MySQL', value: 'mysql' },
-  { name: 'MariaDB', value: 'mariadb' },
-  { name: 'Postgres', value: 'postgresql' },
-  { name: 'SQLite', value: 'sqlite' },
-  { name: 'SQL Server', value: 'sqlserver' },
-  { name: 'Amazon Redshift', value: 'redshift' },
-  { name: 'CockroachDB', value: 'cockroachdb' },
-  { name: 'Oracle', value: 'other' },
-  { name: 'Cassandra', value: 'other' },
-  { name: 'BigQuery', value: 'bigquery' },
-  { name: 'Firebird', value: 'firebird'},
-]
-
-export const keymapTypes = [
-  { name: "Default", value: "default" },
-  { name: "Vim", value: "vim" }
-]
-
-export interface RedshiftOptions {
-  iamAuthenticationEnabled?: boolean
-  accessKeyId?: string;
-  secretAccessKey?: string;
-  awsRegion?: string;
-  clusterIdentifier?: string;
-  databaseGroup?: string;
-  tokenDurationSeconds?: number;
-}
-
-export interface CassandraOptions {
-  localDataCenter?: string
-}
-
-export interface BigQueryOptions {
-  keyFilename?: string;
-  projectId?: string;
-  devMode?: boolean
-}
+const azureEncrypt = new AzureCredsEncryptTransformer(loadEncryptionKey())
 
 export interface ConnectionOptions {
   cluster?: string
-  connectionMethod?: string
+  connectionMethod?: 'manual' | 'connectionString'
   connectionString?: string
 }
 
@@ -72,6 +32,9 @@ function parseConnectionType(t: Nullable<ConnectionType>) {
 }
 
 export class DbConnectionBase extends ApplicationEntity {
+  withProps(_props?: any): DbConnectionBase {
+    return this;
+  }
 
   _connectionType: Nullable<ConnectionType> = null
 
@@ -102,14 +65,15 @@ export class DbConnectionBase extends ApplicationEntity {
     return this._port
   }
 
-
-
   public get defaultPort() : Nullable<number> {
     let port
     switch (this.connectionType as string) {
       case 'mysql':
       case 'mariadb':
         port = 3306
+        break
+      case 'tidb':
+        port = 4000
         break
       case 'postgresql':
         port = 5432
@@ -131,6 +95,9 @@ export class DbConnectionBase extends ApplicationEntity {
         break
       case 'firebird':
         port = 3050
+        break
+      case 'sqlanywhere':
+        port = 2638
         break
       default:
         port = null
@@ -155,6 +122,8 @@ export class DbConnectionBase extends ApplicationEntity {
       return '/var/run/mysqld/mysqld.sock'
     } else if (this.connectionType === 'postgresql') {
       return '/var/run/postgresql'
+    } else if (this.connectionType === 'tidb') {
+      return '/tmp/tidb.sock'
     }
     return null
   }
@@ -171,8 +140,8 @@ export class DbConnectionBase extends ApplicationEntity {
   @Column({ type: "varchar", nullable: true })
   defaultDatabase: Nullable<string> = null
 
-  @Column({ type: "varchar", nullable: true })
-  uri: Nullable<string> = null
+  @Column({ type: "varchar", nullable: true, transformer: [encrypt] })
+  url: Nullable<string> = null
 
   @Column({ type: "varchar", length: 500, nullable: false })
   uniqueHash = "DEPRECATED"
@@ -217,16 +186,30 @@ export class DbConnectionBase extends ApplicationEntity {
   @Column({type: 'boolean', nullable: false, default: false})
   readOnlyMode = true
 
+  // Used for Oracle only
   @Column({ type: 'simple-json', nullable: false })
-  options: ConnectionOptions = {}
+  options: ConnectionOptions = { connectionMethod: 'manual' }
 
   @Column({ type: 'simple-json', nullable: false })
   redshiftOptions: RedshiftOptions = {}
 
   @Column({type: 'simple-json', nullable: false})
   cassandraOptions: CassandraOptions = {}
+
   @Column({ type: 'simple-json', nullable: false })
   bigQueryOptions: BigQueryOptions = {}
+
+  @Column({ type: 'simple-json', nullable: false, transformer: [azureEncrypt]})
+  azureAuthOptions: AzureAuthOptions = {}
+
+  @Column({ type: 'integer', nullable: true})
+  authId: Nullable<number> = null
+
+  @Column({ type: 'simple-json', nullable: false })
+  libsqlOptions: LibSQLOptions = { mode: 'url' }
+
+  @Column({ type: 'simple-json', nullable: false })
+  sqlAnywhereOptions: SQLAnywhereOptions = { mode: 'server' }
 
   // this is only for SQL Server.
   @Column({ type: 'boolean', nullable: false })
@@ -239,6 +222,26 @@ export class DbConnectionBase extends ApplicationEntity {
 
 @Entity({ name: 'saved_connection' })
 export class SavedConnection extends DbConnectionBase implements IConnection {
+
+  withProps(props?: any): SavedConnection {
+
+    if (props) {
+      if (props.connectionType) {
+        this.connectionType = props.connectionType;
+      }
+      SavedConnection.merge(this, props);
+    }
+
+    if (!this.createdAt) {
+      this.createdAt = new Date();
+    }
+
+    if (!this.updatedAt) {
+      this.updatedAt = new Date();
+    }
+
+    return this;
+  }
 
   @Column("varchar")
   name!: string
@@ -302,20 +305,45 @@ export class SavedConnection extends DbConnectionBase implements IConnection {
 
   parse(url: string): boolean {
     try {
-      const goodEndings = ['.db', '.sqlite', '.sqlite3']
+      const endings = [
+        { connectionType: 'sqlite', options: ['.db', '.sqlite', '.sqlite3']},
+        { connectionType: 'duckdb', options: ['.duckdb', '.ddb']}
+      ]
+      // const goodEndings = ['.db', '.sqlite', '.sqlite3']
+      // const duckDbEndings = ['.duckdb', '.ddb']
       if (!this.smellsLikeUrl(url)) {
         // it's a sqlite file
-        if (goodEndings.find((e) => url.endsWith(e))) {
-          // it's a valid sqlite file
-          this.connectionType = 'sqlite'
-          this.defaultDatabase = url
-          return true
-        } else {
-          // do nothing, continue url parsing
+        for (let i = 0; i < endings.length; i++) {
+          const { connectionType, options } = endings[i];
+          if(options.find((e) => url.endsWith(e))) {
+            this.connectionType = connectionType as any
+            this.defaultDatabase = url
+            return true;
+          }
         }
       }
 
-      const parsed = new ConnectionString(url.replaceAll(/\s/g, "%20"))
+      let cleanedUrl = url
+      let extractedUser = undefined
+      let extractedPassword = undefined
+  
+      if (url.includes('@')) {
+        const lastAtIndex = url.lastIndexOf('@')
+        let firstDoubleSlash = url.indexOf('//') + 2
+        if (firstDoubleSlash === 1) firstDoubleSlash = 0
+        const credentials = url.substring(firstDoubleSlash, lastAtIndex)
+  
+        const [user, ...passwordParts] = credentials.split(':')
+        extractedUser = user
+        extractedPassword = passwordParts.join(':')
+  
+        cleanedUrl = url.substring(0, firstDoubleSlash) + url.substring(lastAtIndex + 1)
+      }
+
+      const encodedUrl = encodeURI(cleanedUrl)
+      const parsed = new ConnectionString(encodedUrl)
+      const parsedUncoded = new ConnectionString(url)
+  
       this.connectionType = parsed.protocol as ConnectionType || this.connectionType || 'postgresql'
       if (parsed.hostname && parsed.hostname.includes('redshift.amazonaws.com')) {
         this.connectionType = 'redshift'
@@ -323,10 +351,10 @@ export class SavedConnection extends DbConnectionBase implements IConnection {
 
       if (parsed.hostname && parsed.hostname.includes('cockroachlabs.cloud')) {
         this.connectionType = 'cockroachdb'
-        if (parsed.params?.options) {
+        if (parsedUncoded.params?.options) {
           // TODO: fix this
           const regex = /--cluster=([A-Za-z0-9\-_]+)/
-          const clusters = parsed.params.options.match(regex)
+          const clusters = parsedUncoded.params.options.match(regex)
           this.options['cluster'] = clusters ? clusters[1] : undefined
         }
       }
@@ -336,9 +364,9 @@ export class SavedConnection extends DbConnectionBase implements IConnection {
       }
       this.host = parsed.hostname || this.host
       this.port = parsed.port || this.port
-      this.username = parsed.user || this.username
-      this.password = parsed.password || this.password
-      this.defaultDatabase = parsed.path?.[0] ?? this.defaultDatabase
+      this.username = extractedUser ?? parsed.user
+      this.password = extractedPassword ?? parsed.password
+      this.defaultDatabase = parsed.path?.join('/') ?? this.defaultDatabase
       return true
     } catch (ex) {
       log.error('unable to parse connection string, assuming sqlite file', ex)

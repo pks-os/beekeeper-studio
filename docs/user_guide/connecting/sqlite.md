@@ -2,11 +2,12 @@
 title: SQLite
 summary: "Connect to a SQLite database by double clicking, from the command line, or from the app. You can also optionally load runtime extensions"
 old_url: "https://docs.beekeeperstudio.io/docs/sqlite"
+icon: simple/sqlite
 ---
 
 Connecting to a SQLite database from the app is pretty easy, simply select `SQLite` from the dropdown, choose your SQLite file, then click `connect`.
 
-## File associations
+## Double click .db and .sqlite3 files
 
 When you install Beekeeper Studio it will create an association for files with the following extensions: `.db`, `.sqlite3`, and `.sqlite`.
 

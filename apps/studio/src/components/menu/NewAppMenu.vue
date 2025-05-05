@@ -25,8 +25,8 @@
         <ul>
           <li
             class="menu-item"
-            :class="{'has-children': !!item.submenu, ...hoverClass(item)}"
-            v-for="(item, idx) in menu.submenu"
+            :class="{'has-children': !!item.submenu, ...hoverClass(item), 'disabled-app-menu': isMenuItemDisabled(item.id)}"
+            v-for="(item, idx) in (menu.submenu || [])"
             :key="item.id || idx"
           >
             <a
@@ -35,14 +35,20 @@
               @mouseover.prevent="setHover(item)"
               :class="hoverClass(item)"
             >
-              <span class="label">{{ item.label }}</span>
+              <span class="label">
+                <span 
+                  class="material-icons" 
+                  v-if="item.checked"
+                >done</span>
+                <span>{{ item.label }}</span>
+              </span>
               <span class="shortcut">{{ shortcutText(item) }}</span>
             </a>
             <!-- Second Level Menu, eg Dark Theme, Light Theme -->
             <ul v-if="item.submenu">
               <li
                 class="menu-item"
-                v-for="subitem in item.submenu"
+                v-for="subitem in (item.submenu || [])"
                 :key="subitem.label"
               >
                 <a
@@ -72,8 +78,7 @@
 import _ from 'lodash'
 import ClientMenuActionHandler from '../../lib/menu/ClientMenuActionHandler'
 import MenuBuilder from '../../common/menus/MenuBuilder'
-import platformInfo from '../../common/platform_info'
-import { mapGetters } from 'vuex'
+import { mapGetters, mapState } from 'vuex'
 
 
 export default {
@@ -95,14 +100,26 @@ export default {
         "ArrowRight": this.moveRight,
         "Escape": this.closeMenu,
         "Enter": this.clickHovered
-      }
+      },
+      connectionMenuItems:[
+          "new-query-menu", 
+          "go-to", 
+          "disconnect", 
+          "import-sql-files", 
+          "close-tab", 
+          "menu-toggle-sidebar", 
+          "menu-secondary-sidebar",
+          "backup-database", 
+          "restore-database", 
+          "export-tables"
+      ]
     }
   },
   computed: {
     allHotkeys() {
       const result = {}
       this.menus.forEach(menu => {
-        menu.submenu.forEach(item => {
+        menu.submenu?.forEach(item => {
           if (item.accelerator && item.click) {
             const shortcut = this.shortcut(item)
             if (shortcut)
@@ -115,13 +132,14 @@ export default {
     menuElements() {
       return Array.from(this.$refs.nav.getElementsByTagName("*"))
     },
-    ...mapGetters({'settings': 'settings/settings'})
+    ...mapGetters({'settings': 'settings/settings'}),
+    ...mapState(['connected'])
   },
   watch: {
     settings: {
       deep: true,
       handler() {
-        this.menuBuilder = new MenuBuilder(this.settings, this.actionHandler)
+        this.menuBuilder = new MenuBuilder(this.settings, this.actionHandler, this.$config)
         this.menus = this.menuBuilder.buildTemplate()
       }
     },
@@ -137,6 +155,9 @@ export default {
     }
   },
   methods: {
+    isMenuItemDisabled(itemId){
+      return this.connectionMenuItems.includes(itemId) && !this.connected;
+    },
     getNext(array, item) {
       const selectedIndex = item ? _.indexOf(array, item) : -1
       const newIndex = selectedIndex >= array.length -1 ? 0 : selectedIndex + 1
@@ -213,12 +234,12 @@ export default {
     },
     shortcutText(item) {
       if (!item.accelerator) return ""
-      const meta = platformInfo.isMac ? 'Cmd' : 'Ctrl'
+      const meta = this.$config.isMac ? 'Cmd' : 'Ctrl'
       return item.accelerator.replace('CommandOrControl', meta)
     },
     shortcut(item) {
       if (!item.click || !item.accelerator || item.registerAccelerator === false) return null
-      const ctrlKey = platformInfo.isMac ? 'meta' : 'ctrl'
+      const ctrlKey = this.$config.isMac ? 'meta' : 'ctrl'
       return item.accelerator
         .replace('CommandOrControl', ctrlKey)
         .replace('Plus', 'numpad +')
@@ -256,8 +277,8 @@ export default {
       // Empty on purpose
     }
   },
-  mounted() {
-    this.menuBuilder = new MenuBuilder(this.$store.state.settings.settings, this.actionHandler)
+  async mounted() {
+    this.menuBuilder = new MenuBuilder(this.settings, this.actionHandler, this.$config)
     this.menus = this.menuBuilder.buildTemplate()
     document.addEventListener('click', this.maybeHideMenu)
     window.addEventListener('keydown', this.maybeCaptureKeydown, false)

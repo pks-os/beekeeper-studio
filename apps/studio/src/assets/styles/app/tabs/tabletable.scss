@@ -1,5 +1,6 @@
 
 .tabletable {
+  padding-bottom: 0;
 
   .tabulator {
     .tabulator-header {
@@ -74,4 +75,24 @@
     }
   }
 
+  .empty-placeholder {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-weight: bold;
+    font-size: 1.5rem;
+    color: $text;
+  }
+
+  .table-view-wrapper {
+    min-height: 0;
+    display: flex;
+    height: 100%;
+    width: 100%;
+  }
+
+  .statusbar {
+    position: relative;
+  }
 }

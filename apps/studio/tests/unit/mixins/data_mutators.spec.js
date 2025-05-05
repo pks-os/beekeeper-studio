@@ -5,7 +5,9 @@ describe("cellFormatter", () => {
 
   it("Should only render escaped html", () => {
     const input = {
-      getValue: () => '<a>foo</a>'
+      getValue: () => '<a>foo</a>',
+      getElement: () => document.createElement('a'),
+      getColumn: () => ({ getDefinition: () => ({ binaryEncoding: 'base64' }) }),
     }
 
     const formatted = mutators.methods.cellFormatter(input)
@@ -17,10 +19,14 @@ describe("cellFormatter", () => {
   it('Should render a unixtime', () => {
     const input = {
       getValue: () => '8640000000000000',
+      getElement: () => document.createElement('a'),
+      getColumn: () => ({ getDefinition: () => ({ binaryEncoding: 'base64' }) }),
     }
-    
+
     const badInput = {
       getValue: () => '8640000000000005',
+      getElement: () => document.createElement('a'),
+      getColumn: () => ({ getDefinition: () => ({ binaryEncoding: 'base64' }) }),
     }
 
     const params = {

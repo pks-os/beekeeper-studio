@@ -11,7 +11,7 @@
           :key="index"
           @click.stop="optionClicked(option, $event)"
           class="vue-simple-context-menu__item"
-          :class="[option.class, (option.type === 'divider' ? 'vue-simple-context-menu__divider' : '')]"
+          :class="[typeof option.class === 'function' ? option.class({ item }) : option.class, (option.type === 'divider' ? 'vue-simple-context-menu__divider' : '')]"
         >
           <span v-html="option.name" />
           <div class="expand" />
@@ -21,7 +21,15 @@
               v-if="option.shortcut"
               v-html="option.shortcut"
             />
-            <i v-if="option.ultimate && $config.isCommunity" class="material-icons menu-icon">stars</i>
+            <i
+              class="material-icons menu-icon"
+              v-if="option.icon"
+            >{{ option.icon }}</i>
+            <!-- NOTE (@day): this is supposed to only appear when you don't have an ult license, but this component can't use the store -->
+            <i
+              v-if="option.ultimate && $store.getters.isCommunity"
+              class="material-icons menu-icon"
+            >stars</i>
           </span>
         </li>
       </ul>
@@ -31,6 +39,7 @@
 
 <script lang="ts">
 
+// NOTE (@day): we can't use the store here for some reason
 import { ContextOption } from '@/plugins/BeekeeperPlugin'
 import Vue from 'vue'
 
@@ -127,9 +136,10 @@ export default Vue.extend({
 </script>
 
 <style lang="scss">
+@use 'sass:color';
 // yuck
 $light-grey: #ecf0f1;
-$grey: darken($light-grey, 15%);
+$grey: color.adjust($light-grey, $lightness: -15%);
 $blue: #007aff;
 $white: #fff;
 $black: #333;

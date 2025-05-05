@@ -18,9 +18,9 @@
         <tab-icon :tab="tab" />
         <span
           class="tab-title truncate"
-          :title="title + scope"
+          :title="title + (!$store.getters.minimalMode ? scope : '')"
         >{{ title }} <span
-          v-if="scope"
+          v-if="scope && !$store.getters.minimalMode"
           class="tab-title-scope"
         >{{ scope }}</span></span>
         <div class="tab-action">
@@ -53,9 +53,12 @@
       >
         <div class="dialog-content">
           <div class="dialog-c-title">
-            Really close <span class="tab-like"><tab-icon :tab="tab" /> {{ this.tab.title }}</span>?
+            Really close <span class="tab-like"><tab-icon
+              :tab="tab"
+              :force-icon="true"
+            /> {{ this.tab.title }}</span>?
           </div>
-          <p>You will lose unsaved changes</p>
+          <p>{{ tab.isRunning ? 'There is an active process still running. Closing the tab now will force it to stop and could result in catastrophe.' : 'You will lose unsaved changes' }}</p>
         </div>
         <div class="vue-dialog-buttons">
           <span class="expand" />
@@ -80,6 +83,7 @@
 </template>
 <script>
 import TabIcon from './tab/TabIcon.vue'
+import { mapState } from 'vuex'
 
   export default {
   components: { TabIcon },
@@ -109,7 +113,7 @@ import TabIcon from './tab/TabIcon.vue'
       closeForReal() {
         this.$modal.hide(this.modalName)
         this.$nextTick(() => {
-          this.$emit('close', this.tab)
+          this.$emit(this.tab.isRunning ? 'forceClose' : 'close', this.tab)
         })
       },
       async maybeClose(event) {
@@ -127,16 +131,28 @@ import TabIcon from './tab/TabIcon.vue'
       }
     },
     watch: {
+      activeTab() {
+        if(!this.activeTab){
+           return;
+         }
+         const { schemaName, tabType, tableName } = this.activeTab;
+         const newSelectedSidebarItem = `${tabType}.${schemaName}.${tableName}`;
+         this.$store.commit('selectSidebarItem', newSelectedSidebarItem);
+      },
     },
     computed: {
+      ...mapState('tabs', { 'activeTab': 'active' }),
       contextOptions() {
+        const copyNameClass = (this.tab.tabType === "table" || this.tab.tabType === "table-properties") ? "" : "disabled";
+
         return [
           { name: "Close", slug: 'close', handler: ({event}) => this.maybeClose(event)},
           { name: "Close Others", slug: 'close-others', handler: ({item}) => this.$emit('closeOther', item)},
           { name: 'Close All', slug: 'close-all', handler: ({item}) => this.$emit('closeAll', item)},
           { name: "Close Tabs to Right", slug: 'close-to-right', handler: ({item}) => this.$emit('closeToRight', item)},
-          { name: "Duplicate", slug: 'duplicate', handler: ({item}) => this.$emit('duplicate', item) }
-        ]
+          { name: "Duplicate", slug: 'duplicate', handler: ({item}) => this.$emit('duplicate', item) },
+          { name: "Copy Entity Name", slug: 'copy-name', handler: ({item}) => this.$emit('copyName', item), class: copyNameClass }
+        ];
       },
       modalName() {
         return `sure-${this.tab.id}`
@@ -147,12 +163,11 @@ import TabIcon from './tab/TabIcon.vue'
         return null
       },
       keymap() {
-        const result = {}
-        if (this.selected) {
-          result[this.ctrlOrCmd('w')] = this.maybeClose
-        }
+        if (!this.selected) return {}
 
-        return result
+        return this.$vHotkeyKeymap({
+          'tab.closeTab': this.maybeClose,
+        })
       },
       cleanText() {
         // no spaces
@@ -170,12 +185,12 @@ import TabIcon from './tab/TabIcon.vue'
         }
       },
       tableTabTitle() {
-        if (!this.tab.type === 'table') return null;
+        if (!this.tab.tabType === 'table') return null;
         let result = this.tab.table.name
         return result
       },
       queryTabTitle() {
-        if (!this.tab.type === 'query') return null
+        if (!this.tab.tabType === 'query') return null
         if (this.tab.query && this.tab.query.title) {
           return this.tab.query.title
         }

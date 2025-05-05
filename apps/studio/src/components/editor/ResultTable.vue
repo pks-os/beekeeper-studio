@@ -3,6 +3,35 @@
     class="result-table"
     v-hotkey="keymap"
   >
+    <form 
+      class="table-search-wrapper table-filter"
+      @submit.prevent="searchHandler"
+    >
+      <div class="input-wrapper filter">
+        <input
+          type="text"
+          v-model="filterValue"
+          ref="filterInput"
+          class="form-control filter-value"
+          placeholder="Search Results"
+        >
+        <button
+          type="button"
+          class="clear btn-link"
+          title="clear search filter"
+          @click.prevent="clearSearchFilters"
+        >
+          <i class="material-icons">cancel</i>
+        </button>
+      </div>
+      <button
+        type="submit"
+        class="btn btn-primary btn-fab"
+        title="filter results table"
+      >
+        <i class="material-icons">search</i>
+      </button>
+    </form>
     <div
       ref="tabulator"
       class="spreadsheet-table"
@@ -11,31 +40,36 @@
 </template>
 
 <script type="text/javascript">
-  import { Tabulator, TabulatorFull} from 'tabulator-tables'
   import _ from 'lodash'
   import dateFormat from 'dateformat'
   import Converter from '../../mixins/data_converter'
   import Mutators from '../../mixins/data_mutators'
   import { escapeHtml } from '@shared/lib/tabulator'
   import { dialectFor } from '@shared/lib/dialects/models'
-  import globals from '@/common/globals'
+  import { FkLinkMixin } from '@/mixins/fk_click'
+  import MagicColumnBuilder from '@/lib/magic/MagicColumnBuilder'
   import Papa from 'papaparse'
-  import { mapState } from 'vuex'
+  import { mapState, mapGetters } from 'vuex'
   import { markdownTable } from 'markdown-table'
-  import * as intervalParse from 'postgres-interval'
+  import intervalParse from 'postgres-interval'
   import * as td from 'tinyduration'
-  import { copyRange, copyActionsMenu, commonColumnMenu, resizeAllColumnsToFitContent, resizeAllColumnsToFixedWidth } from '@/lib/menu/tableMenu';
-  import { rowHeaderField } from '@/lib/table-grid/utils'
+  import { copyRanges, copyActionsMenu, commonColumnMenu, resizeAllColumnsToFitContent, resizeAllColumnsToFixedWidth } from '@/lib/menu/tableMenu';
+  import { rowHeaderField } from '@/common/utils'
+  import { tabulatorForTableData } from '@/common/tabulator';
+  import { AppEvent } from "@/common/AppEvent";
+  import XLSX from 'xlsx';
 
   export default {
-    mixins: [Converter, Mutators],
+    mixins: [Converter, Mutators, FkLinkMixin],
     data() {
       return {
         tabulator: null,
         actualTableHeight: '100%',
+        selectedRowData: {},
+        filterValue: ''
       }
     },
-    props: ['result', 'tableHeight', 'query', 'active'],
+    props: ['result', 'tableHeight', 'query', 'active', 'tab', 'focus', 'binaryEncoding'],
     watch: {
       active() {
         if (!this.tabulator) return;
@@ -55,14 +89,21 @@
       },
       tableHeight() {
         this.tabulator.setHeight(this.actualTableHeight)
-      }
+      },
+      focus() {
+        if (!this.focus) return
+        this.triggerFocus()
+        this.scrollToRangeIfOutOfView()
+      },
     },
     computed: {
-      ...mapState(['connection']),
+      ...mapState(['usedConfig', 'defaultSchema', 'connectionType', 'connection']),
+      ...mapGetters(['isUltimate']),
       keymap() {
-        const result = {}
-        result[this.ctrlOrCmd('c')] = this.copySelection.bind(this)
-        return result
+        return this.$vHotkeyKeymap({
+          'queryEditor.copyResultSelection': this.copySelection.bind(this),
+          'tableTable.focusOnFilterInput': this.focusOnFilterInput.bind(this)
+        });
       },
       tableData() {
           return this.dataToTableData(this.result, this.tableColumns)
@@ -71,33 +112,53 @@
           return this.result.truncated
       },
       tableColumns() {
-        const columnWidth = this.result.fields.length > 30 ? globals.bigTableColumnWidth : undefined
+        const columnWidth = this.result.fields.length > 30 ? this.$bksConfig.ui.tableTable.defaultColumnWidth : undefined
 
         const cellMenu = (_e, cell) => {
           return copyActionsMenu({
-            range: _.last(cell.getRanges()),
-            connection: this.connection,
+            ranges: cell.getRanges(),
             table: this.result.tableName,
-            schema: this.connection.defaultSchema(),
+            schema: this.defaultSchema,
           })
         }
 
         const columnMenu = (_e, column) => {
           return [
             ...copyActionsMenu({
-              range: _.last(column.getRanges()),
-              connection: this.connection,
-              table: 'mytable',
-              schema: this.connection.defaultSchema(),
+              ranges: column.getRanges(),
+              table: this.result.tableName,
+              schema: this.defaultSchema,
             }),
             { separator: true },
             ...commonColumnMenu,
           ]
         }
 
-        const columns = this.result.fields.map((column, index) => {
-          const title = column.name || `Result ${index}`
+        const columns = this.result.fields.flatMap((column, index) => {
+          const results = []
+          const magic = MagicColumnBuilder.build(column.name) || {}
+          const title = magic?.title ?? column.name ?? `Result ${index}`
+
+          let cssClass = 'hide-header-menu-icon'
+
+          if (magic.cssClass) {
+            cssClass += ` ${magic.cssClass}`
+          }
+
+          if (magic.formatterParams?.fk) {
+            magic.formatterParams.fkOnClick = (_e, cell) => this.fkClick(magic.formatterParams.fk[0], cell)
+          }
+
+          const magicStuff = _.pick(magic, ['formatter', 'formatterParams'])
+          const defaults = {
+            formatter: this.cellFormatter,
+            formatterParams: {
+              binaryEncoding: this.binaryEncoding,
+            },
+          }
+
           const result = {
+            ...defaults,
             title,
             titleFormatter() {
               return `<span class="title">${escapeHtml(title)}</span>`
@@ -106,63 +167,31 @@
             titleDownload: escapeHtml(column.name),
             dataType: column.dataType,
             width: columnWidth,
-            mutator: this.resolveTabulatorMutator(column.dataType, dialectFor(this.connection.connectionType)),
+            mutator: this.resolveTabulatorMutator(column.dataType, dialectFor(this.connectionType)),
             formatter: this.cellFormatter,
-            maxInitialWidth: globals.maxColumnWidth,
+            maxInitialWidth: this.$bksConfig.ui.tableTable.maxColumnWidth,
             tooltip: this.cellTooltip,
             contextMenu: cellMenu,
             headerContextMenu: columnMenu,
             headerMenu: columnMenu,
             resizable: 'header',
-            cssClass: 'hide-header-menu-icon',
+            cssClass,
+            ...magicStuff
           }
+
           if (column.dataType === 'INTERVAL') {
             // add interval sorter
             result['sorter'] = this.intervalSorter;
           }
-          return result;
+
+          results.push(result)
+
+          if (magic && magic.tableLink) {
+            const fkCol = this.fkColumn(result, [magic.tableLink])
+            results.push(fkCol)
+          }
+          return results;
         })
-
-        const rowHeader = {
-          field: rowHeaderField,
-          resizable: false,
-          frozen: true,
-          headerSort: false,
-          editor: false,
-          htmlOutput: false,
-          print: false,
-          clipboard: false,
-          download: false,
-          minWidth: 38,
-          width: 38,
-          hozAlign: 'center',
-          formatter: 'rownum',
-          formatterParams: { relativeToPage: true },
-          contextMenu: (_e, cell) => {
-            return copyActionsMenu({
-              range: _.last(cell.getRanges()),
-              connection: this.connection,
-              table: 'mytable',
-              schema: this.connection.defaultSchema(),
-            })
-          },
-          headerContextMenu: () => {
-            const range = _.last(this.tabulator.getRanges())
-            return [
-              ...copyActionsMenu({
-                range,
-                connection: this.connection,
-                table: 'mytable',
-                schema: this.connection.defaultSchema(),
-              }),
-              { separator: true },
-              resizeAllColumnsToFitContent,
-              resizeAllColumnsToFixedWidth,
-            ]
-          },
-        }
-
-        columns.unshift(rowHeader)
 
         return columns
       },
@@ -172,40 +201,86 @@
           result[column.field] = column.title
         })
         return result
-      }
+      },
+      tableId() {
+        // the id for a tabulator table
+        if (!this.usedConfig.id) return null;
+
+        const workspace = 'workspace-' + this.worskpaceId
+        const connection = 'connection-' + this.usedConfig.id
+        const table = 'table-' + this.result.tableName
+        const columns = 'columns-' + this.result.fields.reduce((str, field) => `${str},${field.name}`, '')
+        return `${workspace}.${connection}.${table}.${columns}`
+      },
+      rootBindings() {
+        return [
+          { event: AppEvent.switchedTab, handler: this.handleSwitchedTab },
+        ]
+      },
     },
     beforeDestroy() {
       if (this.tabulator) {
         this.tabulator.destroy()
       }
+      this.unregisterHandlers(this.rootBindings)
     },
     async mounted() {
       this.initializeTabulator()
+      if (this.focus) {
+        const onTableBuilt = () => {
+          this.triggerFocus()
+          this.tabulator.off('tableBuilt', onTableBuilt)
+        }
+        this.tabulator.on('tableBuilt', onTableBuilt)
+      }
+      if (this.active) {
+        this.handleTabActive()
+      }
+      this.registerHandlers(this.rootBindings)
     },
     methods: {
       initializeTabulator() {
         if (this.tabulator) {
           this.tabulator.destroy()
         }
-        this.tabulator = new TabulatorFull(this.$refs.tabulator, {
-          selectableRange: true,
-          selectableRangeColumns: true,
-          selectableRangeRows: true,
-          resizableColumnGuide: true,
+        this.tabulator = tabulatorForTableData(this.$refs.tabulator, {
+          table: this.result.tableName,
+          schema: this.result.schema,
+          persistenceID: this.tableId,
           data: this.tableData, //link data to table
-          reactiveData: true,
-          renderHorizontal: 'virtual',
           columns: this.tableColumns, //define table columns
           height: this.actualTableHeight,
-          nestedFieldSeparator: false,
           downloadConfig: {
             columnHeaders: true
           },
+          onRangeChange: this.handleRangeChange,
         });
       },
+      focusOnFilterInput() {
+        this.$refs.filterInput.focus()
+      },
+      searchHandler() {
+        this.tabulator.clearFilter()
+
+        const columns = this.tableColumns
+        const filters = columns.map(({field}) => ({
+          type: 'like',
+          value: this.filterValue.trim(),
+          field
+        }))
+
+        this.tabulator.setFilter([filters])
+      },
+      clearSearchFilters() {
+        this.filterValue = ''
+        this.tabulator.clearFilter()
+      },
       copySelection() {
-        if (!document.activeElement.classList.contains('tabulator-tableholder')) return
-        copyRange({ range: _.last(this.tabulator.getRanges()), type: 'plain' })
+        const classes = [...document.activeElement.classList.values()];
+        const isFocusingTable = classes.some(c => c.startsWith('tabulator'));
+
+        if (!this.active || !isFocusingTable) return
+        copyRanges({ ranges: this.tabulator.getRanges(), type: 'plain' })
       },
       dataToJson(rawData, firstObjectOnly) {
         const rows = _.isArray(rawData) ? rawData : [rawData]
@@ -215,23 +290,52 @@
         return firstObjectOnly ? result[0] : result
       },
       download(format) {
-        let formatter = format !== 'md' ? format : (rows, options, setFileContents) => {
-          const values = rows.map(row => row.columns.map(col => col.value))
-          setFileContents(markdownTable(values), 'text/markdown')
-        };
+        let formatter = format;
+        const dateString = dateFormat(new Date(), 'yyyy-mm-dd_hMMss');
+        const title = this.query.title ? _.snakeCase(this.query.title) : 'query_results';
+
+        if(format === 'md'){
+          formatter = (rows, options, setFileContents) => {
+            const values = rows.map(row => row.columns.map(col => typeof col.value === 'object' ? JSON.stringify(col.value) : col.value));
+            setFileContents(markdownTable(values), 'text/markdown')
+          };
+        }
+
         // Fix Issue #1493 Lost column names in json query download
         // by overriding the tabulator-generated json with ...what cipboard() does, below:
-        formatter = format !== 'json' ? formatter : (rows, options, setFileContents) => {
-          setFileContents(
-            JSON.stringify(this.dataToJson(this.tabulator.getData(), false), null, "  "), 'text/json'
-           )
-        };
-        const dateString = dateFormat(new Date(), 'yyyy-mm-dd_hMMss')
-        const title = this.query.title ? _.snakeCase(this.query.title) : "query_results"
+        if(format === 'json'){
+          formatter = (rows, options, setFileContents) => {
+             const newValue = JSON.stringify(this.dataToJson(this.tabulator.getData(), false), null, "  ");
+             setFileContents(newValue, 'text/json');
+          };
+        }
 
-        // xlsx seems to be the only one that doesn't know what 'all' is it would seem https://tabulator.info/docs/5.4/download#xlsx
-        const options = typeof formatter !== 'function' && formatter.toLowerCase() === 'xlsx' ? {} : 'all'
-        this.tabulator.download(formatter, `${title}-${dateString}.${format}`, options)
+        // Fix Issue #2863 replacing null values with empty string
+        if(format === 'xlsx'){
+          formatter = (rows, options, setFileContents) => {
+             const values = rows.map(row => row.columns.map(col => {
+               if(col.value === null){
+                 return '';
+               }
+
+               if(typeof col.value === 'object'){
+                 return JSON.stringify(col.value);
+               }
+
+               return col.value;
+              })
+            );
+
+             const ws = XLSX.utils.aoa_to_sheet(values);
+             const wb = XLSX.utils.book_new();
+
+             XLSX.utils.book_append_sheet(wb, ws, title);
+             const excel = XLSX.write(wb, { type: 'buffer' });
+             setFileContents(excel);
+          }
+        }
+
+        this.tabulator.download(formatter, `${title}-${dateString}.${format}`, 'all');
       },
       clipboard(format = null) {
         // this.tabulator.copyToClipboard("all")
@@ -247,7 +351,12 @@
         if (format === 'md') {
           const mdContent = [
             Object.keys(result[0]),
-            ...result.map((row) => Object.values(row)),
+            ...result
+                .map((row) =>
+                  Object.values(row).map(v =>
+                    (typeof v === 'object') ? JSON.stringify(v) : v
+                  )
+                )
           ];
           this.$native.clipboard.writeText(markdownTable(mdContent))
         } else if (format === 'json') {
@@ -272,7 +381,80 @@
         } catch {
           return 0;
         }
+      },
+      scrollToRangeIfOutOfView() {
+        // FIXME This is a copy of how auto scroll works in tabulator
+        // SelectRange. We need to make the API available from tabulator
+        // instead of copying it here.
+        // e.g. this.tabulator.scrollToRangeIfOutOfView
+        const range = this.tabulator.getRanges().pop()
+        const rangeBounds = range.getBounds()
+        const row = rangeBounds.end.row
+        const column = rangeBounds.end.column
+        const rowRect = row.getElement().getBoundingClientRect();
+        const columnRect = column.getElement().getBoundingClientRect();
+        const rowManagerRect = this.tabulator.rowManager.getElement().getBoundingClientRect();
+        const columnManagerRect = this.tabulator.columnManager.getElement().getBoundingClientRect();
+
+        if(!(rowRect.top >= rowManagerRect.top && rowRect.bottom <= rowManagerRect.bottom)){
+          if(row.getElement().parentNode && column.getElement().parentNode){
+            // Use faster autoScroll when the elements are on the DOM
+            this.tabulator.modules.selectRange.autoScroll(range, row.getElement(), column.getElement());
+          }else{
+            row.getComponent().scrollTo(undefined, false);
+          }
+        }
+
+        if(!(columnRect.left >= columnManagerRect.left + this.rowHeaderWidth && columnRect.right <= columnManagerRect.right)){
+          if(row.getElement().parentNode && column.getElement().parentNode){
+            // Use faster autoScroll when the elements are on the DOM
+            this.tabulator.modules.selectRange.autoScroll(range, row.getElement(), column.getElement());
+          }else{
+            column.getComponent().scrollTo(undefined, false);
+          }
+        }
+      },
+      triggerFocus() {
+        this.tabulator.rowManager.getElement().focus();
+      },
+      handleRangeChange(ranges) {
+        this.selectedRowData = this.dataToJson(ranges[0].getRows()[0].getData(), true)
+        const data = {
+          value: this.selectedRowData,
+          expandablePaths: [],
+        }
+        this.trigger(AppEvent.updateJsonViewerSidebar, data)
+      },
+      handleTabActive() {
+        const data = {
+          value: this.selectedRowData,
+          expandablePaths: [],
+        }
+        this.trigger(AppEvent.updateJsonViewerSidebar, data)
+      },
+      handleSwitchedTab(tab) {
+        if (tab.id === this.tab.id) {
+          this.handleTabActive()
+        }
       }
-    }
+    },
 	}
 </script>
+
+<style lang="scss" scoped>
+  .table-search-wrapper {
+    display: flex;
+    padding: 1rem;
+    justify-content: space-between;
+  }
+
+  .input-wrapper {
+    width: 97%;
+    position: relative;
+    .clear {
+      position: absolute;
+      right: 0;
+      top: 5px;
+    }
+  }
+</style>

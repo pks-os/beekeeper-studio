@@ -1,4 +1,4 @@
-import { createConnection, Connection as TypeORMConnection } from "typeorm"
+import { DataSource } from "typeorm"
 import { SavedConnection } from "./models/saved_connection"
 import { UsedConnection } from "./models/used_connection"
 import { UsedQuery } from './models/used_query'
@@ -8,9 +8,12 @@ import { LoggerOptions } from 'typeorm/logger/LoggerOptions'
 import { PinnedEntity } from "./models/PinnedEntity"
 import { CloudCredential } from "./models/CloudCredential"
 import { OpenTab } from "./models/OpenTab"
+import { LicenseKey } from "./models/LicenseKey"
 import { HiddenEntity } from "./models/HiddenEntity"
 import { HiddenSchema } from "./models/HiddenSchema"
 import { PinnedConnection } from "./models/PinnedConnection"
+import { TokenCache } from "./models/token_cache"
+import { InstallationId } from "./models/installation_id"
 
 const models = [
   SavedConnection,
@@ -21,29 +24,45 @@ const models = [
   PinnedEntity,
   CloudCredential,
   OpenTab,
+  LicenseKey,
   HiddenEntity,
   HiddenSchema,
-  PinnedConnection
+  PinnedConnection,
+  TokenCache,
+  InstallationId
 ]
 
+interface IConnectionState {
+  connection: Connection | null
+}
+
+export const ConnectionState: IConnectionState = {
+  connection: null
+}
 
 export default class Connection {
-  private connection?: TypeORMConnection
+  public connection?: DataSource
 
-  constructor(private path: string, private logging: LoggerOptions) {}
+  constructor(private path: string, private logging: LoggerOptions = false) {}
 
-  async connect(): Promise<TypeORMConnection> {
-    this.connection = await createConnection({
+  async connect(options: any = {}): Promise<void> {
+    this.connection = new DataSource({
       database: this.path,
       type: 'better-sqlite3',
       synchronize: false,
       migrationsRun: false,
       entities: models,
       logging: this.logging,
+      ...options
     })
-    return this.connection
+    await this.connection.initialize()
+    ConnectionState.connection = this
   }
 
+  async disconnect() {
+    await this.connection?.destroy()
+    this.connection = undefined;
+  }
 
 
 }

@@ -14,6 +14,11 @@ Supported Architectures: `x86-64` (most laptops and desktops) and `ARM64` (Raspb
 
 ## AppImage
 
+!!! info "Ubuntu requires Fuse Libraries"
+    In Ubuntu you will need to install libfuse for the AppImage to work. Here's how:
+    Ubuntu < 22.04 use: `sudo apt-get install fuse libfuse2`
+    Ubuntu >= 22.04 use: `sudo apt install libfuse2`
+
 AppImages can be downloaded and run directly on most Linux distributions without any sort of installation. This is great if you don't have root access, but still want to use Beekeeper Studio.
 
 The AppImage distribution of Beekeeper Studio provides automatic updates.
@@ -22,8 +27,12 @@ Download the latest AppImage [from the Beekeeper Studio homepage](https://www.be
 
 If you want to integrate the AppImage into your system shell (so it appears in your Application menu), we recommend you [install AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher/releases/latest).
 
-## Apt / DEB
-A repo is provided for Debian and Ubuntu 16.04+.
+## DEB
+A repo is provided for Debian and Ubuntu 20.04+.
+
+DEB builds are provided for both x86_64 and ARM64 systems.
+
+Either set the repo up using the code below, or [download the deb file from the latest release](https://github.com/beekeeper-studio/beekeeper-studio/releases/latest), and it will automatically install the repository on installation.
 
 ```bash
 # Install our GPG key
@@ -36,8 +45,42 @@ curl -fsSL https://deb.beekeeperstudio.io/beekeeper.key | sudo gpg --dearmor --o
 sudo apt update && sudo apt install beekeeper-studio -y
 ```
 
+## RPM
 
-## Snap Store / Ubuntu Store
+RPM builds are provided for both x86_64 and ARM64 systems
+
+Either set the repo up using the code below, or [download the rpm file from the latest release](https://github.com/beekeeper-studio/beekeeper-studio/releases/latest), and it will automatically install the repository on installation.
+
+```bash
+# Download a copy of our .repo file (to handle software updates)
+sudo curl -o /etc/yum.repos.d/beekeeper-studio.repo https://rpm.beekeeperstudio.io/beekeeper-studio.repo
+
+
+# Add our GPG public key
+sudo rpm --import https://rpm.beekeeperstudio.io/beekeeper.key
+
+# check if the repo is configured correctly
+dnf repolist
+
+# Then
+sudo dnf install beekeeper-studio
+# or, on legacy systems
+sudo yum install beekeeper-studio
+```
+
+## AUR
+
+AUR files are provided for both x86_64 and ARM64 systems, you can download them from [the latest release](https://github.com/beekeeper-studio/beekeeper-studio).
+
+Real AUR integration coming soon.
+
+## Flatpak
+
+AUR files are provided for both x86_64 and ARM64 systems, you can download them from [the latest release](https://github.com/beekeeper-studio/beekeeper-studio).
+
+Flathub integration coming soon.
+
+## Snap
 
 You can also install Beekeeper Studio through Snapcraft (also part of the Ubuntu Store). Use either the Snap Store link below, or install through the terminal.
 

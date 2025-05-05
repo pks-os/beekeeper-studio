@@ -1,9 +1,9 @@
 ---
-title: Browse and Edit Table Data
+title: Table View
 summary: "View, search, and modify your database table data using our built-in table explorer."
 old_url: "https://docs.beekeeperstudio.io/docs/creating-tables"
+icon: material/table
 ---
-
 
 Double click a table in the left sidebar to open an Excel-like interface for viewing and editing the data. We call this the **Table View**
 
@@ -66,6 +66,30 @@ In the table view you can easily edit any cell you like. Simply double click the
 Editing a JSON document in a tiny table cell isn't a great experience. Instead you can right click the cell and select `Edit in Modal`. This will provide a pop-out modal with syntax highlighting and checking.
 
 ![Editing JSON values in SQL Database using Beekeeper Studio](../assets/images/table-view-modal-edit.png)
+
+### Editing tables that don't have primary keys
+
+Beekeeper Studio doesn't typically allow you to edit a table that does not contain a primary key, but other database GUIs allow this, so what gives?
+
+In general, if you don't have a primary key on your table there is **no reliable way to identify a specific row**. Some GUIs support editing in this situation, but they use a *heuristic* to determine which row to update. A common technique is matching all the values of the row to perform the update, or using a secret row identifier.
+
+#### A not on secret/internal row identifiers
+
+Some databases provide an internal identifier for rows, but they're not always stable.
+
+The PostgreSQL [ctid](https://www.postgresql.org/docs/current/ddl-system-columns.html#DDL-SYSTEM-COLUMNS-CTID) identifies the physical location of a row, but can change during a vaccum, making it unsuitable as a real row identifier in certain situations.
+
+Oracle's [ROWID](https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/ROWID-Pseudocolumn.html#GUID-F6E0FBD2-983C-495D-9856-5E113A17FAF1) is similar, but the docs explicitly state that `You should not use ROWID as the primary key of a table.`.
+
+#### Good-enough isn't good enough
+
+We never want Beekeeper Studio to be the reason you update the wrong row in a production database. Ever. A solution that works 99% of the time, or even 99.9% of the time *isn't good enough* when dealing with production data.
+
+For that reason editing of table data is disabled unless your table has a primary key.
+
+#### Exceptions
+
+- SQLite always gives rows a primary key, whether specified or not. This `rowid` is used by Beekeeper Studio in SQLite to enable data editing where you haven't specified a primary key.
 
 
 ### Applying Changes

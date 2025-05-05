@@ -1,11 +1,5 @@
 <template>
   <div class="sidebar-wrap row">
-    <global-sidebar
-      @selected="click"
-      v-on="$listeners"
-      :active-item="activeItem"
-    />
-
     <div class="tab-content">
       <!-- Tables -->
       <div
@@ -16,7 +10,6 @@
       >
         <database-dropdown
           @databaseSelected="databaseSelected"
-          :connection="connection"
         />
         <table-list />
       </div>
@@ -46,17 +39,18 @@
 
 <script>
   import _ from 'lodash'
-  import GlobalSidebar from './GlobalSidebar'
-  import TableList from './core/TableList'
-  import HistoryList from './core/HistoryList'
-  import FavoriteList from './core/FavoriteList'
-  import DatabaseDropdown from './core/DatabaseDropdown'
+  import TableList from './core/TableList.vue'
+  import HistoryList from './core/HistoryList.vue'
+  import FavoriteList from './core/FavoriteList.vue'
+  import DatabaseDropdown from './core/DatabaseDropdown.vue'
 
-  import { mapState } from 'vuex'
+  import { mapState, mapGetters, mapActions } from 'vuex'
+  import rawLog from '@bksLogger'
+
+  const log = rawLog.scope('core-sidebar')
 
   export default {
-    props: ['sidebarShown'],
-    components: { TableList, DatabaseDropdown, HistoryList, GlobalSidebar, FavoriteList},
+    components: { TableList, DatabaseDropdown, HistoryList, FavoriteList},
     data() {
       return {
         tableLoadError: null,
@@ -64,7 +58,6 @@
         filterQuery: null,
         allExpanded: null,
         allCollapsed: null,
-        activeItem: 'tables',
       }
     },
     computed: {
@@ -81,7 +74,19 @@
           .value()
         return _.concat(startsWithFilter, containsFilter)
       },
-      ...mapState(['tables', 'connection', 'database']),
+      ...mapState("sidebar", {
+        "activeItem": "globalSidebarActiveItem",
+        "sidebarShown": "primarySidebarOpen",
+      }),
+      ...mapState(['tables', 'database']),
+      ...mapGetters(['minimalMode']),
+    },
+    watch: {
+      minimalMode() {
+        if (this.minimalMode) {
+          this.setActiveItem('tables')
+        }
+      },
     },
     methods: {
       tabClasses(item) {
@@ -90,20 +95,21 @@
           active: (this.activeItem === item)
         }
       },
-      click(item) {
-        this.activeItem = item;
-        if(!this.sidebarShown) {
-          this.$emit('toggleSidebar')
-        }
-      },
       async databaseSelected(db) {
-        this.$store.dispatch('changeDatabase', db)
+        log.info("Pool database selected", db)
+        this.$store.dispatch('changeDatabase', db).catch((e) => {
+          this.$noty.error(e.message);
+        })
         this.allExpanded = false
       },
       async disconnect() {
         await this.$store.dispatch('disconnect')
         this.$noty.success("Successfully Disconnected")
       },
+      ...mapActions({
+        setActiveItem: "sidebar/setGlobalSidebarActiveItem",
+        setPrimarySidebarOpen: "sidebar/setPrimarySidebarOpen",
+      }),
     }
   }
 </script>

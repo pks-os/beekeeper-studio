@@ -35,7 +35,7 @@
     </div>
 
     <div class="expand" />
-    <status-bar class="tablulator-footer">
+    <status-bar class="tablulator-footer" :active="active">
       <div class="flex flex-middle statusbar-actions">
         <slot name="footer" />
         <x-button
@@ -89,9 +89,7 @@
 <script lang="ts">
 import Vue from 'vue';
 import DataMutators from '../../mixins/data_mutators'
-import { TabulatorFull, Tabulator } from 'tabulator-tables'
-type RowComponent = Tabulator.RowComponent;
-type CellComponent = Tabulator.CellComponent;
+import { TabulatorFull, RowComponent, CellComponent } from 'tabulator-tables'
 import _ from 'lodash';
 import { TabulatorStateWatchers, vueEditor, trashButton } from '@shared/lib/tabulator/helpers'
 import StatusBar from '../common/StatusBar.vue'
@@ -100,6 +98,7 @@ import NullableInputEditorVue from '@shared/components/tabulator/NullableInputEd
 import { AppEvent } from '@/common/AppEvent';
 import { FormatterDialect } from '@shared/lib/dialects/models';
 import { format } from 'sql-formatter';
+import { mapState } from 'vuex';
 
 export default Vue.extend({
 	components: {
@@ -107,7 +106,7 @@ export default Vue.extend({
     ErrorAlert
   },
   mixins: [DataMutators],
-  props: ['table', 'connection', 'tabID', 'active', 'tabState', 'properties'],
+  props: ['table', 'tabID', 'active', 'tabState', 'properties'],
   data() {
     return {
       tabulator: null,
@@ -126,18 +125,15 @@ export default Vue.extend({
     ...TabulatorStateWatchers
   },
   computed: {
+    ...mapState(['supportedFeatures', 'connection']),
     hotkeys() {
       if (!this.active) return {};
-      const result = {};
-      result['f5'] = this.refreshPartitions.bind(this)
-      result[this.ctrlOrCmd('r')] = this.refreshPartitions.bind(this)
-      if (this.editable) {
-        result[this.ctrlOrCmd('n')] = this.addRow.bind(this)
-        result[this.ctrlOrCmd('s')] = this.submitApply.bind(this)
-        result[this.ctrlOrCmd('shift+s')] = this.submitSql.bind(this)
-      }
-
-      return result;
+      return this.$vHotkeyKeymap({
+        'general.refresh': this.refreshPartitions.bind(this),
+        'general.addRow': this.addRow.bind(this),
+        'general.save': this.submitApply.bind(this),
+        'general.openInSqlEditor': this.submitSql.bind(this),
+      })
     },
     hasEdits() {
       return this.editCount > 0;
@@ -177,7 +173,7 @@ export default Vue.extend({
       });
     },
     editable() {
-      return this.connection.supportedFeatures().editPartitions;
+      return this.supportedFeatures.editPartitions;
     }
   },
   methods: {
@@ -217,6 +213,8 @@ export default Vue.extend({
       await this.$emit('refresh');
     },
     async addRow(): Promise<void> {
+      if (!this.editable) return;
+
       const data = this.tabulator.getData();
       const name = `${this.table.name}_partition_${data.length + 1}`;
       const row: RowComponent = await this.tabulator.addRow({name, expression: this.expressionTemplate, num: 0});
@@ -267,6 +265,8 @@ export default Vue.extend({
       };
     },
     async submitApply(): Promise<void> {
+      if (!this.editable) return;
+
       try {
         this.error = null;
         const changes = this.collectChanges();
@@ -282,6 +282,8 @@ export default Vue.extend({
       }
     },
     async submitSql(): Promise<void> {
+      if (!this.editable) return;
+
       try {
         this.error = null;
         const changes = this.collectChanges();

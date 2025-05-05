@@ -47,7 +47,7 @@
 
     <div class="expand" />
 
-    <status-bar class="tabulator-footer">
+    <status-bar class="tabulator-footer" :active="active">
       <div class="flex flex-middle flex-right statusbar-actions">
         <slot name="footer" />
         <x-button
@@ -100,10 +100,7 @@
 </template>
 <script lang="ts">
 import Vue from 'vue'
-import { Tabulator, TabulatorFull } from 'tabulator-tables'
-type CellComponent = Tabulator.CellComponent
-type RowComponent = Tabulator.RowComponent
-type ColumnDefinition = Tabulator.ColumnDefinition
+import { Tabulator, TabulatorFull, CellComponent, RowComponent, ColumnDefinition } from 'tabulator-tables'
 
 import StatusBar from '../common/StatusBar.vue'
 import { TabulatorStateWatchers, trashButton, vueEditor } from '@shared/lib/tabulator/helpers'
@@ -114,13 +111,15 @@ import { TableColumn, TableOrView } from '@/lib/db/models'
 import _ from 'lodash'
 import { format } from 'sql-formatter'
 import { AppEvent } from '@/common/AppEvent'
-import rawLog from 'electron-log'
+import rawLog from '@bksLogger'
 import ErrorAlert from '../common/ErrorAlert.vue'
 const log = rawLog.scope('TableRelations');
 import { escapeHtml } from '@shared/lib/tabulator'
+import { SelectableCellMixin } from '@/mixins/selectableCell';
 
 export default Vue.extend({
-  props: ["table", "connection", "tabId", "active", "properties", 'tabState'],
+  mixins: [SelectableCellMixin],
+  props: ["table", "tabId", "active", "properties", 'tabState'],
   components: {
     StatusBar,
     ErrorAlert
@@ -135,20 +134,19 @@ export default Vue.extend({
     }
   },
   computed: {
-    ...mapState(['tables']),
+    ...mapState(['tables', 'connection']),
     ...mapGetters(['schemas', 'dialect', 'schemaTables', 'dialectData']),
     enabled() {
-      return !this.dialectData.disabledFeatures?.alter?.everything
+      return !this.dialectData.disabledFeatures?.alter?.everything && !this.dialectData?.disabledFeatures?.relations;
     },
     hotkeys() {
       if (!this.active) return {}
-      const result = {}
-      result['f5'] = () => this.$emit('refresh')
-      result[this.ctrlOrCmd('n')] = this.addRow.bind(this)
-      result[this.ctrlOrCmd('r')] = () => this.$emit('refresh')
-      result[this.ctrlOrCmd('s')] = this.submitApply.bind(this)
-      result[this.ctrlOrCmd('shift+s')] = this.submitSql.bind(this)
-      return result
+      return this.$vHotkeyKeymap({
+        'general.refresh': () => this.$emit('refresh'),
+        'general.addRow': this.addRow.bind(this),
+        'general.save': this.submitApply.bind(this),
+        'general.openInSqlEditor': this.submitSql.bind(this)
+      })
     },
     notice() {
       const results = []
@@ -189,7 +187,7 @@ export default Vue.extend({
           widthGrow: 2,
           editable,
           editor: vueEditor(NullableInputEditorVue),
-
+          cellDblClick: (e, cell) => this.handleCellDoubleClick(cell)
         },
         {
           field: 'fromColumn',
@@ -199,7 +197,8 @@ export default Vue.extend({
           editorParams: {
             // @ts-expect-error Incorrectly typed
             valuesLookup: () => this.table.columns.map((c) => escapeHtml(c.columnName))
-          }
+          },
+          cellDblClick: (e, cell) => this.handleCellDoubleClick(cell)
         },
         ...( showSchema ? [{
           field: 'toSchema',
@@ -221,38 +220,42 @@ export default Vue.extend({
             // @ts-expect-error Incorrectly typed
             valuesLookup: this.getTables
           },
-          cellEdited: (cell) => cell.getRow().getCell('toColumn')?.setValue(null)
+          cellEdited: (cell) => cell.getRow().getCell('toColumn')?.setValue(null),
+          cellDblClick: (e, cell) => this.handleCellDoubleClick(cell)
         },
         {
           field: 'toColumn',
           title: "FK Column",
           editable,
-          editor: 'select',
+          editor: 'list',
           editorParams: {
             // @ts-expect-error Incorrectly typed
             valuesLookup: this.getColumns
           },
+          cellDblClick: (e, cell) => this.handleCellDoubleClick(cell)
         },
         {
           field: 'onUpdate',
           title: "On Update",
-          editor: 'select',
+          editor: 'list',
           editable,
           editorParams: {
             values: this.dialectData.constraintActions,
             defaultValue: 'NO ACTION'
-          }
+          },
+          cellDblClick: (e, cell) => this.handleCellDoubleClick(cell)
         },
         {
           field: 'onDelete',
           title: 'On Delete',
           editable,
-          editor: 'select',
+          editor: 'list',
           // @ts-expect-error Bad Type
           editorParams: {
             values: this.dialectData.constraintActions,
             defaultValue: 'NO ACTION',
-          }
+          },
+          cellDblClick: (e, cell) => this.handleCellDoubleClick(cell)
         },
       ]
       return this.canDrop ? [...results, trashButton(this.removeRow)] : results
@@ -353,7 +356,7 @@ export default Vue.extend({
         this.loading = true
         this.error = null
         const payload = this.getPayload()
-        await this.connection.alterRelation(payload)
+        await this.connection.alterRelation(payload);
         this.$noty.success("Relations Updated")
         this.$emit('actionCompleted')
         this.newRows = []
@@ -367,9 +370,9 @@ export default Vue.extend({
       }
 
     },
-    submitSql() {
+    async submitSql() {
       const payload = this.getPayload()
-      const sql = this.connection.alterRelationSql(payload)
+      const sql = await this.connection.alterRelationSql(payload);
       const formatted = format(sql, { language: FormatterDialect(this.dialect)})
       this.$root.$emit(AppEvent.newTab, formatted)
     },

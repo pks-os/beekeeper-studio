@@ -57,8 +57,12 @@ function setValue(updated: UserSettingValue): Nullable<string> {
 
 @Entity({name: 'user_setting'})
 export class UserSetting extends ApplicationEntity {
+  withProps(props?: any): UserSetting {
+    if (props) UserSetting.merge(this, props);
+    return this;
+  }
+
   static THEME = 'theme'
-  static MenuStyle = 'menuStyle'
 
   static async all(): Promise<IGroupedUserSettings> {
     const settings = await UserSetting.find()
@@ -66,11 +70,11 @@ export class UserSetting extends ApplicationEntity {
   }
 
   static async get(key: string) {
-    return await UserSetting.findOne({key})
+    return await UserSetting.findOneBy({ key })
   }
 
   static async set(key: string, value: string): Promise<void> {
-    let existing = await UserSetting.findOne({ key });
+    let existing = await UserSetting.findOneBy({ key });
     if (!existing) {
       existing = new UserSetting()
       existing.key = key
@@ -104,6 +108,10 @@ export class UserSetting extends ApplicationEntity {
     this.userValue = updated
   }
 
+  get valueAsBool() {
+    return !!this.value
+  }
+
   get stringValue() {
     return this.value.toString()
   }
@@ -125,6 +133,7 @@ export class UserSetting extends ApplicationEntity {
 
   @Column({type: 'varchar'})
   windowsDefault?: string
+
 
   @Column({type: 'integer', nullable: false})
   valueType: UserSettingValueType = UserSettingValueType.string

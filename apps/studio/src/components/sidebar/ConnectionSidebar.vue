@@ -1,5 +1,7 @@
 <template>
   <div class="sidebar-wrap row">
+    <workspace-sidebar />
+
     <!-- QUICK CONNECT -->
     <div class="tab-content flex-col expand">
       <div class="btn-wrap quick-connect">
@@ -12,6 +14,27 @@
           <span>New Connection</span>
         </a>
       </div>
+      <!-- Filter -->
+      <div class="fixed">
+        <div class="filter">
+          <div class="filter-wrap">
+            <input
+              class="filter-input"
+              type="text"
+              placeholder="Filter"
+              v-model="connFilter"
+            >
+            <x-buttons class="filter-actions">
+              <x-button
+                @click="clearFilter"
+                v-if="connFilter"
+              >
+                <i class="clear material-icons">cancel</i>
+              </x-button>
+            </x-buttons>
+          </div>
+        </div>
+      </div>
 
       <div class="connection-wrap expand flex-col">
         <!-- Pinned Connections -->
@@ -19,6 +42,7 @@
         <div
           class="list saved-connection-list expand"
           ref="pinnedConnectionList"
+          v-show="!noPins && !connFilter"
         >
           <div class="list-group">
             <div class="list-heading">
@@ -29,6 +53,9 @@
               </div>
               <span class="expand" />
               <div class="actions">
+                <a @click="togglePrivacyMode" :title="privacyMode ? 'Disable Privacy Mode' : 'Enable Privacy Mode'">
+                  <i class="material-icons">{{ privacyMode ? 'visibility_off' : 'visibility' }}</i>
+                </a>
                 <a @click.prevent="refresh"><i class="material-icons">refresh</i></a>
               </div>
             </div>
@@ -51,6 +78,7 @@
                 :selected-config="selectedConfig"
                 :show-duplicate="true"
                 :pinned="true"
+                :privacy-mode="privacyMode"
                 @edit="edit"
                 @remove="remove"
                 @duplicate="duplicate"
@@ -60,7 +88,7 @@
           </div>
         </div>
 
-        <hr v-if="!noPins"> <!-- fake gutter for split.js -->
+        <hr v-show="!noPins"> <!-- fake gutter for split.js -->
 
         <!-- Saved Connections -->
         <div
@@ -71,7 +99,7 @@
             <div class="list-heading">
               <div class="flex">
                 <div class="sub row flex-middle noselect">
-                  Saved <span class="badge">{{ (connectionConfigs || []).length }}</span>
+                  Saved <span class="badge">{{ (filteredConnections || []).length }}</span>
                 </div>
                 <span class="expand" />
                 <div class="actions">
@@ -79,7 +107,12 @@
                     v-if="isCloud"
                     @click.prevent="importFromLocal"
                     title="Import connections from local workspace"
-                  ><i class="material-icons">save_alt</i></a>
+                  >
+                    <i class="material-icons">save_alt</i>
+                  </a>
+                  <a @click="togglePrivacyMode" :title="privacyMode ? 'Disable Privacy Mode' : 'Enable Privacy Mode'">
+                    <i class="material-icons">{{ privacyMode ? 'visibility_off' : 'visibility' }}</i>
+                  </a>
                   <a @click.prevent="refresh"><i class="material-icons">refresh</i></a>
                   <sidebar-sort-buttons
                     v-model="sort"
@@ -146,6 +179,7 @@
                   :selected-config="selectedConfig"
                   :show-duplicate="true"
                   :pinned="pinnedConnections.includes(c)"
+                  :privacy-mode="privacyMode"
                   @edit="edit"
                   @remove="remove"
                   @duplicate="duplicate"
@@ -159,6 +193,7 @@
                 :selected-config="selectedConfig"
                 :show-duplicate="true"
                 :pinned="pinnedConnections.includes(c)"
+                :privacy-mode="privacyMode"
                 @edit="edit"
                 @remove="remove"
                 @duplicate="duplicate"
@@ -174,6 +209,7 @@
         <div
           class="list recent-connection-list expand"
           ref="recentConnectionList"
+          v-show="!connFilter"
         >
           <div class="list-group">
             <div class="list-heading">
@@ -189,6 +225,7 @@
                 :selected-config="selectedConfig"
                 :is-recent-list="true"
                 :show-duplicate="false"
+                :privacy-mode="privacyMode"
                 @edit="edit"
                 @remove="removeUsedConfig"
                 @doubleClick="connect"
@@ -202,185 +239,192 @@
 </template>
 
 <script>
-  import _ from 'lodash'
-  import { mapState, mapGetters } from 'vuex'
-  import ConnectionListItem from './connection/ConnectionListItem'
-  import SidebarLoading from '@/components/common/SidebarLoading.vue'
-  import ErrorAlert from '@/components/common/ErrorAlert.vue'
-  import Split from 'split.js'
+import _ from 'lodash'
+import WorkspaceSidebar from './WorkspaceSidebar.vue'
+import { mapState, mapGetters, mapActions } from 'vuex'
+import ConnectionListItem from './connection/ConnectionListItem.vue'
+import SidebarLoading from '@/components/common/SidebarLoading.vue'
+import ErrorAlert from '@/components/common/ErrorAlert.vue'
+import Split from 'split.js'
 import SidebarFolder from '@/components/common/SidebarFolder.vue'
 import { AppEvent } from '@/common/AppEvent'
-import rawLog from 'electron-log'
+import rawLog from '@bksLogger'
 import SidebarSortButtons from '../common/SidebarSortButtons.vue'
 
 const log = rawLog.scope('connection-sidebar');
 
-  export default {
-    components: { ConnectionListItem, SidebarLoading, ErrorAlert, SidebarFolder, SidebarSortButtons },
-    props: ['selectedConfig'],
-    data: () => ({
-      split: null,
-      sortables: {
-        labelColor: "Color",
-        id: "Created",
-        name: "Name",
-        connectionType: "Type",
-      },
-      sort: { field: 'name', order: 'asc' },
+export default {
+  components: {
+    ConnectionListItem,
+    SidebarLoading,
+    ErrorAlert,
+    SidebarFolder,
+    SidebarSortButtons,
+    WorkspaceSidebar
+  },
+  props: ['selectedConfig'],
+  data: () => ({
+    split: null,
+    sortables: {
+      labelColor: "Color",
+      id: "Created",
+      name: "Name",
+      connectionType: "Type",
+    },
+    sort: { field: 'name', order: 'asc' },
+    sizes: [33, 33, 33]
+  }),
+  watch: {
+    async sort() {
+      await this.$settings.set('connectionsSortOrder', this.sort.order)
+      await this.$settings.set('connectionsSortBy', this.sort.field)
+    },
+  },
+  computed: {
+    ...mapState('data/connections', {
+      connectionsLoading: 'loading',
+      connectionsError: 'error',
+      connectionFilter: 'filter'
     }),
-    watch: {
-      async sort() {
-        await this.$settings.set('connectionsSortOrder', this.sort.order)
-        await this.$settings.set('connectionsSortBy', this.sort.field)
+    ...mapState('data/connectionFolders', {
+      folders: 'items',
+      foldersLoading: 'loading',
+      foldersError: 'error',
+      foldersUnsupported: 'unsupported'
+    }),
+    ...mapState('settings', ['privacyMode']),
+    ...mapGetters({
+      usedConfigs: 'data/usedconnections/orderedUsedConfigs',
+      settings: 'settings/settings',
+      isCloud: 'isCloud',
+      activeWorkspaces: 'credentials/activeWorkspaces',
+      pinnedConnections: 'pinnedConnections/pinnedConnections',
+      filteredConnections: 'data/connections/filteredConnections'
+    }),
+    connFilter: {
+      get() {
+        return this.connectionFilter;
       },
-      // If we load with some pins, this will reinitialize split to reflect that
-      noPins(value) {
-        if (!value)
-          this.buildSplit()
-      },
-      // Check if we need to reinitialize split based on pinnedConnections length
-      pinnedConnections(value) {
-        if (value.length < 2)
-          this.buildSplit()
+      set(newFilter) {
+        this.$store.dispatch('data/connections/setConnectionFilter', newFilter);
       }
     },
-    computed: {
-      ...mapState('data/connections', {'connectionConfigs': 'items', 'connectionsLoading': 'loading', 'connectionsError': 'error'}),
-      ...mapState('data/connectionFolders', {'folders': 'items', 'foldersLoading': 'loading', 'foldersError': 'error', 'foldersUnsupported': 'unsupported'}),
-      ...mapGetters({
-        'usedConfigs': 'orderedUsedConfigs',
-        'settings': 'settings/settings',
-        'isCloud': 'isCloud',
-        'activeWorkspaces': 'credentials/activeWorkspaces',
-        'pinnedConnections': 'pinnedConnections/pinnedConnections'
-      }),
-      empty() {
-        return !this.connectionConfigs?.length
-      },
-      noPins() {
-        return !this.pinnedConnections?.length;
-      },
-      foldersSupported() {
-        return !this.foldersUnsupported
-      },
-      lonelyConnections() {
-        const folderIds = this.folders.map((c) => c.id)
-        return this.sortedConnections.filter((config) => {
-          return !config.connectionFolderId || !folderIds.includes(config.connectionFolderId)
-        })
-      },
-      foldersWithConnections() {
-        if (this.loading) return []
+    empty() {
+      return !this.filteredConnections?.length
+    },
+    noPins() {
+      return !this.pinnedConnections?.length;
+    },
+    foldersSupported() {
+      return !this.foldersUnsupported
+    },
+    lonelyConnections() {
+      const folderIds = this.folders.map((c) => c.id)
+      return this.sortedConnections.filter((config) => {
+        return !config.connectionFolderId || !folderIds.includes(config.connectionFolderId)
+      })
+    },
+    foldersWithConnections() {
+      if (this.loading) return []
 
-        const result = this.folders.map((folder) => {
-          return {
-            folder,
-            connections: this.sortedConnections.filter((c) => c.connectionFolderId === folder.id)
-          }
-        })
-
-        return result
+      return this.folders.map((folder) => ({
+        folder,
+        connections: this.sortedConnections.filter((c) => c.connectionFolderId === folder.id)
+      }));
+    },
+    loading() {
+      return this.connectionsLoading || this.foldersLoading
+    },
+    error: {
+      get() {
+        return this.connectionsError || this.foldersError || null
       },
-      loading() {
-        return this.connectionsLoading || this.foldersLoading
-      },
-      error: {
-        get() {
-          return this.connectionsError || this.foldersError || null
-        },
-        set(value) {
-          if (!value) {
-            this.$store.dispatch('data/connections/clearError');
-            this.$store.dispatch('data/connectionFolders/clearError')
-          } else {
-            log.warn("Unable to set an actual error, sorry")
-          }
-        }
-      },
-      sortedConnections() {
-        let result = []
-        if (this.sort.field === 'labelColor') {
-          const mappings = {
-            default: -1,
-            red: 0,
-            orange: 1,
-            yellow: 2,
-            green: 3,
-            blue: 4,
-            purple: 5,
-            pink: 6
-          }
-          result = _.orderBy(this.connectionConfigs, (c) => mappings[c.labelColor])
+      set(value) {
+        if (!value) {
+          this.$store.dispatch('data/connections/clearError');
+          this.$store.dispatch('data/connectionFolders/clearError')
         } else {
-          result = _.orderBy(this.connectionConfigs, this.sort.field)
-        }
-
-        if (this.sort.order == 'desc') result = result.reverse()
-        return result;
-      },
-      components() {
-        if (!this.noPins) {
-          return [
-            this.$refs.pinnedConnectionList,
-            this.$refs.savedConnectionList,
-            this.$refs.recentConnectionList
-          ]
-        } else {
-          return [
-            this.$refs.savedConnectionList,
-            this.$refs.recentConnectionList
-          ]
+          log.warn("Unable to set an actual error, sorry")
         }
       }
     },
-    async mounted() {
-      this.buildSplit()
-      const [field, order] = await Promise.all([
-        this.$settings.get('connectionsSortBy', 'name'),
-        this.$settings.get('connectionsSortOrder', 'asc')
-      ])
-      this.sort.field = field
-      this.sort.order = order
+    sortedConnections() {
+      let result = []
+      if (this.sort.field === 'labelColor') {
+        const mappings = {
+          default: -1,
+          red: 0,
+          orange: 1,
+          yellow: 2,
+          green: 3,
+          blue: 4,
+          purple: 5,
+          pink: 6
+        }
+        result = _.orderBy(this.filteredConnections, (c) => mappings[c.labelColor])
+      } else {
+        result = _.orderBy(this.filteredConnections, this.sort.field)
+      }
+      if (this.sort.order === 'desc') result = result.reverse()
+      return result;
     },
-    methods: {
-      buildSplit() {
-        if (this.split) this.split.destroy()
-        this.split = Split(this.components, {
-          elementStyle: (dim, size) => ({
-            'flex-basis': `calc(${size}%)`
-          }),
-          direction: 'vertical',
-          sizes: this.noPins ? [50, 50] : [33, 33, 33]
-        })
-      },
-      importFromLocal() {
-        console.log("triggering import")
-        this.$root.$emit(AppEvent.promptConnectionImport)
-      },
-      async refresh() {
-        this.$store.dispatch('data/connectionFolders/load')
-        this.$store.dispatch('data/connections/load')
-        await this.$store.dispatch('pinnedConnections/loadPins');
-        await this.$store.dispatch('pinnedConnections/reorder');
-      },
-      edit(config) {
-        this.$emit('edit', config)
-      },
-      connect(config) {
-        this.$emit('connect', config)
-      },
-      remove(config) {
-        this.$emit('remove', config)
-      },
-      duplicate(config) {
-        this.$emit('duplicate', config)
-      },
-      removeUsedConfig(config) {
-        this.$store.dispatch('removeUsedConfig', config)
-      },
-      getLabelClass(color) {
-        return `label-${color}`
-      },
-    }
+  },
+  async mounted() {
+    this.buildSplit()
+    const [field, order] = await Promise.all([
+      this.$settings.get('connectionsSortBy', 'name'),
+      this.$settings.get('connectionsSortOrder', 'asc')
+    ]);
+    this.sort.field = field
+    this.sort.order = order
+  },
+  methods: {
+    ...mapActions({
+      togglePrivacyMode: 'settings/togglePrivacyMode',
+    }),
+    clearFilter() {
+      this.connFilter = null;
+    },
+    buildSplit() {
+      if (this.split) this.split.destroy()
+      const components = [
+        this.$refs.pinnedConnectionList,
+        this.$refs.savedConnectionList,
+        this.$refs.recentConnectionList
+      ];
+      this.split = Split(components, {
+        elementStyle: (dim, size) => ({
+          'flex-basis': `calc(${size}%)`
+        }),
+        direction: 'vertical',
+        sizes: this.sizes
+      })
+    },
+    importFromLocal() {
+      console.log("triggering import")
+      this.$root.$emit(AppEvent.promptConnectionImport)
+    },
+    async refresh() {
+      await this.$store.dispatch('refreshConnections')
+    },
+    edit(config) {
+      this.$emit('edit', config)
+    },
+    connect(config) {
+      this.$emit('connect', config)
+    },
+    remove(config) {
+      this.$emit('remove', config)
+    },
+    duplicate(config) {
+      this.$emit('duplicate', config)
+    },
+    removeUsedConfig(config) {
+      this.$store.dispatch('data/usedconnections/remove', config)
+    },
+    getLabelClass(color) {
+      return `label-${color}`
+    },
   }
+}
 </script>

@@ -5,43 +5,34 @@
   "author": "Matthew Rathbone <matthew.rathbone@gmail.com>",
   "license": "MIT",
   "private": true,
-  "workspaces": {
-    "packages": [
-      "apps/*"
-    ]
-  },
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
-    "bks:build": "yarn workspace beekeeper-studio electron:build",
-    "bks:dev": "yarn workspace beekeeper-studio electron:serve",
+    "bks:build": "yarn lib:build && yarn workspace beekeeper-studio electron:build",
+    "bks:dev": "yarn lib:build && yarn workspace beekeeper-studio electron:serve",
+    "bks:config:build": "yarn workspace beekeeper-studio config:build",
+    "lib:dev": "yarn workspace @beekeeperstudio/ui-kit lib:dev",
+    "lib:build": "yarn workspace @beekeeperstudio/ui-kit build",
     "sqltools:build": "yarn workspace sqltools build",
     "sqltools:dev": "yarn workspace sqltools serve",
     "electron:build": "yarn bks:build",
     "electron:serve": "yarn bks:dev",
     "docs:serve": "yarn workspace beekeeper-studio docs:serve",
     "web:serve": "yarn sqltools:dev",
+    "test:e2e": "yarn workspace beekeeper-studio test:e2e",
     "test:integration": "yarn workspace beekeeper-studio test:integration",
     "test:unit": "yarn workspace beekeeper-studio test:unit",
-    "all:lint": "yarn workspace beekeeper-studio lint && yarn workspace sqltools lint && npx eslint 'shared/**' --fix"
+    "test:ci": "yarn workspace beekeeper-studio test:ci",
+    "test:codemirror": "yarn workspace beekeeper-studio test:codemirror",
+    "all:lint": "yarn workspace beekeeper-studio lint && yarn workspace sqltools lint && npx eslint 'shared/**' --fix",
+    "postinstall": "husky install",
+    "prepack": "pinst --disable",
+    "postpack": "pinst --enable"
   },
   "devDependencies": {
-    "@google-cloud/bigquery": "^6.2.0",
-    "@typescript-eslint/eslint-plugin": "^4.18.0",
-    "@typescript-eslint/parser": "^4.18.0",
-    "@vue/eslint-config-typescript": "^11.0.2",
-    "eslint": "^6.7.2",
-    "eslint-plugin-vue": "^6.2.2",
-    "log-timestamp": "latest",
-    "npm-run-all": "^4.1.5",
-    "vue-cli-plugin-electron-builder": "latest"
+    "husky": "8.0.3",
+    "pinst": "^3.0.0"
   },
-  "resolutions": {
-    "nan": "2.17.0",
-    "node-abi": "^3.34.0",
-    "cpu-features": "./.yarn/packages/empty-package",
-    "electron-builder": "23.0.2"
-  },
-  "volta": {
-    "node": "16.19.1",
-    "yarn": "1.22.21"
-  }
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

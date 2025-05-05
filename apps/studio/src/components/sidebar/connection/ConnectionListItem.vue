@@ -1,5 +1,5 @@
 <template>
-  <div 
+  <div
     class="list-item"
     :title="title"
     @contextmenu.stop.prevent="showContextMenu"
@@ -13,22 +13,26 @@
     >
       <span :class="`connection-label connection-label-color-${labelColor}`" />
       <div class="connection-title flex-col expand">
-        <div class="title">{{ label }}</div>
-        <div class="subtitle"> 
+        <div class="title">
+          {{ label }}
+        </div>
+        <div class="subtitle">
           <span
             class="bastion"
-            v-if="this.config.sshBastionHost"
+            v-if="this.config.sshBastionHost && !privacyMode"
           >
             <span class="truncate">{{ this.config.sshBastionHost }}</span>&nbsp;>&nbsp;
           </span>
           <span
             class="ssh"
-            v-if="this.config.sshHost"
+            v-if="this.config.sshHost && !privacyMode"
           >
             <span class="truncate">{{ this.config.sshHost }}</span>&nbsp;>&nbsp;
           </span>
           <span class="connection">
-            <span>{{ subtitleSimple }}</span>
+            <span>
+              {{ privacyMode ? '******' : subtitleSimple }}
+            </span>
           </span>
         </div>
       </div>
@@ -66,17 +70,22 @@
   </div>
 </template>
 <script>
-import path from 'path'
 import _ from 'lodash'
 import TimeAgo from 'javascript-time-ago'
 import { mapGetters, mapState } from 'vuex'
-import platformInfo from '@/common/platform_info'
 import { isUltimateType } from '@/common/interfaces/IConnection'
 
 export default {
   // recent list is 'recent connections'
   // if that is true, we need to find the companion saved connection
-  props: ['config', 'isRecentList', 'selectedConfig', 'showDuplicate', 'pinned'],
+  props: [
+    'config',
+    'isRecentList',
+    'selectedConfig',
+    'showDuplicate',
+    'pinned',
+    'privacyMode'
+  ],
   data: () => ({
     timeAgo: new TimeAgo('en-US'),
     split: null
@@ -108,14 +117,16 @@ export default {
     label() {
       if (this.savedConnection) {
         return this.savedConnection.name
-      } else if (this.config.connectionType === 'sqlite') {
-        return path.basename(this.config.defaultDatabase)
+      } else if (this.config.connectionType === 'sqlite' || this.config.connectionType === 'libsql') {
+        return window.main.basename(this.config.defaultDatabase)
+      } else if (this.config.connectionType === 'sqlanywhere' && this.config.sqlAnywhereOptions.mode === 'file') {
+        return window.main.basename(this.config.sqlAnywhereOptions.databaseFile);
       }
 
       return this.$bks.simpleConnectionString(this.config)
     },
     connectionType() {
-      if (this.config.connectionType === 'sqlite') {
+      if (this.config.connectionType === 'sqlite' || this.config.connectionType === 'libsql') {
         return 'path'
       }
 
@@ -129,14 +140,16 @@ export default {
       }
     },
     title() {
-      return this.$bks.buildConnectionString(this.config)
+      return this.privacyMode ? 
+        'Connection details hidden by Privacy Mode' : 
+        this.$bks.buildConnectionString(this.config)
     },
     savedConnection() {
 
       if (this.isRecentList) {
         if (!this.config.connectionId || !this.config.workspaceId) return null
 
-        return this.connectionConfigs.find((c) => 
+        return this.connectionConfigs.find((c) =>
           c.id === this.config.connectionId &&
           c.workspaceId === this.config.workspaceId
         )
@@ -147,7 +160,7 @@ export default {
   },
   methods: {
     showContextMenu(event) {
-      const ultimateCheck = platformInfo.isUltimate
+      const ultimateCheck = this.$store.getters.isUltimate
         ? true
         : !isUltimateType(this.config.connectionType)
 
@@ -208,16 +221,14 @@ export default {
       if (this.savedConnection) {
         this.$emit('edit', this.savedConnection)
       } else {
-        const editable = await this.$store.dispatch('data/connections/clone', this.config)
-        this.$emit('edit', editable)
+        this.$emit('edit', this.config)
       }
     },
     async doubleClick() {
       if (this.savedConnection) {
         this.$emit('doubleClick', this.savedConnection)
       } else {
-        const editable = await this.$store.dispatch('data/connections/clone', this.config)
-        this.$emit('doubleClick', editable)
+        this.$emit('doubleClick', this.config)
       }
     },
     remove() {

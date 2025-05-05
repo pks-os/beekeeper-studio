@@ -6,13 +6,12 @@ import { DbConnectionBase } from './saved_connection'
 @Entity({ name: 'used_connection' })
 export class UsedConnection extends DbConnectionBase implements ISimpleConnection {
 
-  constructor(other: IConnection) {
-    super()
+  withProps(other: IConnection): UsedConnection {
     if (other) {
       this.connectionType = other.connectionType
       this.defaultDatabase = other.defaultDatabase
       this.username = other.username
-      this.uri = other.uri
+      this.url = other.url
       this.port = other.port
       this.host = other.host
       this.sshHost = other.sshHost
@@ -35,8 +34,15 @@ export class UsedConnection extends DbConnectionBase implements ISimpleConnectio
       this.socketPath = other.socketPath
       this.socketPathEnabled = other.socketPathEnabled
       this.bigQueryOptions = other.bigQueryOptions
+      this.azureAuthOptions = other.azureAuthOptions
+      // TEMP (@day): this is just till we fix the used conn duplication issue
+      this.authId = other.authId
+      this.libsqlOptions = other.libsqlOptions
+      this.sqlAnywhereOptions = other.sqlAnywhereOptions
+
     }
 
+    return this;
   }
 
   @Column({type: 'int', nullable: true})

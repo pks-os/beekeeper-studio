@@ -1,4 +1,5 @@
 import { AppEvent } from "@/common/AppEvent";
+import { DatabaseElement } from "@/lib/db/types";
 import { ContextOption } from "@/plugins/BeekeeperPlugin";
 import { DialectData } from "@shared/lib/dialects/models";
 
@@ -33,20 +34,13 @@ export default {
           class: isBQClass,
           handler: this.routineMenuClick
         },
-
-
       ] as ContextOption[],
 
     }
   },
   computed: {
     tableMenuOptions() {
-      // HACK (@day): this stuff will be removed once we get write mode working for BQ
-      const isBQ = this.$store.getters.dialect === 'bigquery';
-      const isBQClass = isBQ ? 'disabled' : '';
-
       const dialect: DialectData = this.$store.getters.dialectData;
-
       return [
         {
           name: "View Data",
@@ -71,8 +65,8 @@ export default {
           }
         },
         {
-          name: "Import From CSV",
-          class: isBQClass,
+          name: "Import from File",
+          class: disabled(dialect.disabledFeatures?.importFromFile),
           slug: 'import',
           ultimate: true,
           handler: ({ item }) => {
@@ -103,15 +97,34 @@ export default {
         {
           name: "SQL: Create",
           slug: 'sql-create',
-          class: isBQClass,
+          class: disabled(dialect.disabledFeatures?.sqlCreate),
           handler: ({ item }) => {
             this.$root.$emit('loadTableCreate', item)
           }
         },
         {
+          name: "Rename",
+          slug: 'rename',
+          class: ({ item  }) => {
+            if (item.entityType === 'table' && dialect.disabledFeatures?.alter?.renameTable) {
+              return 'disabled'
+            }
+            if (item.entityType === 'view' && dialect.disabledFeatures?.alter?.renameView) {
+              return 'disabled'
+            }
+            return ''
+          },
+          handler: ({ item }) => {
+            const type = item.entityType === 'table'
+              ? DatabaseElement.TABLE
+              : DatabaseElement.VIEW
+            this.trigger(AppEvent.setDatabaseElementName, { type, item })
+          }
+        },
+        {
           name: "Drop",
           slug: 'sql-drop',
-          class: isBQClass,
+          class: disabled(dialect.disabledFeatures?.dropTable),
           handler: ({ item }) => {
             this.$root.$emit(AppEvent.dropDatabaseElement, { item, action: 'drop' })
           }
@@ -119,7 +132,7 @@ export default {
         {
           name: "Truncate",
           slug: 'sql-truncate',
-          class: disabled(dialect.disabledFeatures?.truncateElement, isBQ),
+          class: disabled(dialect.disabledFeatures?.truncateElement),
           handler: ({ item }) => {
             this.$root.$emit(AppEvent.dropDatabaseElement, { item, action: 'truncate' })
           }
@@ -127,7 +140,7 @@ export default {
         {
           name: "Duplicate",
           slug: 'sql-duplicate',
-          class: disabled(dialect.disabledFeatures?.duplicateTable, isBQ),
+          class: disabled(dialect.disabledFeatures?.duplicateTable),
           handler: ({ item }) => {
             this.$root.$emit(AppEvent.duplicateDatabaseTable, { item, action: 'duplicate' })
           }
@@ -145,9 +158,17 @@ export default {
             this.trigger(AppEvent.toggleHideSchema, item, true)
           },
         },
+        { type: 'divider' },
+        {
+          name: "Rename",
+          slug: 'rename',
+          class: dialect.disabledFeatures?.alter?.renameSchema ? 'disabled' : '',
+          handler: ({ item }) => this.trigger(AppEvent.setDatabaseElementName, { type: DatabaseElement.SCHEMA, item })
+        },
         {
           name: "Drop",
           slug: 'sql-drop',
+          disabled: disabled(dialect.disabledFeatures?.dropSchema),
           handler: ({ item }) => {
             this.$root.$emit(AppEvent.dropDatabaseElement, {item, action: 'drop'})
           }

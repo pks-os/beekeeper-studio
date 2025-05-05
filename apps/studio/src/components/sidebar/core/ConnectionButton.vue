@@ -1,15 +1,20 @@
 <template>
   <div
-    class="connection-button flex flex-middle"
+    class="connection-button"
     v-if="config"
-    :title="$bks.buildConnectionString(config)"
+    :title="privacyMode ? 
+      'Connection details hidden by Privacy Mode' : 
+      $bks.buildConnectionString(config)"
+    :class="classes"
   >
     <x-button
       class="btn btn-link btn-icon"
       menu
     >
       <i class="material-icons">link</i>
-      <span class="connection-name truncate expand">{{ connectionName }}</span>
+      <span class="connection-name truncate expand">
+        {{ connectionName }}
+      </span>
       <span
         class="connection-type badge truncate"
         v-tooltip="databaseVersion"
@@ -29,9 +34,17 @@
             <i class="material-icons">save</i>Save Connection
           </x-label>
         </x-menuitem>
+        <!-- FIXME: Let's not use connection.connectionType -->
+        <x-menuitem
+          v-if="connection.connectionType === 'libsql' && connection.server.config.libsqlOptions.syncUrl"
+          @click.prevent="syncDatabase"
+        >
+          <x-label>
+            <i class="material-icons">sync</i>Sync Database
+          </x-label>
+        </x-menuitem>
       </x-menu>
     </x-button>
-
     <portal to="modals">
       <modal
         class="vue-dialog beekeeper-modal save-connection-modal"
@@ -39,7 +52,10 @@
         height="auto"
         :scrollable="true"
       >
-        <div class="dialog-content">
+        <div
+          class="dialog-content"
+          v-kbd-trap="true"
+        >
           <div
             v-if="errors"
             class="alert alert-danger"
@@ -73,8 +89,12 @@
         name="running-exports-modal"
         height="auto"
         :scrollable="true"
+        @opened="$refs.cancel.focus()"
       >
-        <form @submit.prevent="disconnect(true)">
+        <form
+          v-kbd-trap="true"
+          @submit.prevent="disconnect(true)"
+        >
           <div class="dialog-content">
             <div class="dialog-c-title">
               Confirm Disconnect
@@ -85,6 +105,7 @@
             <button
               class="btn btn-flat"
               type="button"
+              ref="cancel"
               @click.prevent="$modal.hide('running-exports-modal')"
             >
               Cancel
@@ -103,7 +124,11 @@
 </template>
 <script>
 import { mapState, mapGetters } from 'vuex'
-import SaveConnectionForm from '../../connection/SaveConnectionForm'
+import SaveConnectionForm from '../../connection/SaveConnectionForm.vue'
+import rawLog from '@bksLogger'
+
+const log = rawLog.scope('app.vue')
+
 export default {
   components: {
     SaveConnectionForm
@@ -114,17 +139,34 @@ export default {
     }
   },
   computed: {
-      ...mapState({'config': 'usedConfig'}),
-      ...mapGetters({'hasRunningExports': 'exports/hasRunningExports', 'workspace': 'workspace', 'versionString': 'versionString'}),
-      connectionName() {
-        return this.config ? this.$bks.buildConnectionName(this.config) : 'Connection'
-      },
-      connectionType() {
-        return `${this.config.connectionType}`
-      },
-      databaseVersion() {
-        return this.versionString
+    ...mapState({
+      config: state => state.usedConfig,
+      connection: state => state.connection,
+      versionString: state => state.versionString
+    }),
+    ...mapState('settings', ['privacyMode']),
+    ...mapGetters({
+      hasRunningExports: 'exports/hasRunningExports',
+      workspace: 'workspace',
+      connectionColor: 'connectionColor'
+    }),
+    connectionName() {
+      return this.config ? this.$bks.buildConnectionName(this.config) : 'Connection'
+    },
+    connectionType() {
+      return `${this.config.connectionType}`
+    },
+    databaseVersion() {
+      return this.versionString
+    },
+    classes() {
+      const result = {
+        'connection-button': true
       }
+
+      result[this.connectionColor] = true
+      return result;
+    }
   },
   methods: {
 
@@ -146,6 +188,15 @@ export default {
         this.$modal.show('running-exports-modal')
       } else {
         this.$store.dispatch('disconnect')
+      }
+    },
+    async syncDatabase() {
+      try {
+        await this.$store.dispatch('syncDatabase')
+        this.$noty.success("Database Synced")
+      } catch (error) {
+        log.error(error)
+        this.$noty.error(error.message)
       }
     }
   }

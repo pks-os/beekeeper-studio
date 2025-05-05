@@ -1,12 +1,57 @@
-import rawLog from 'electron-log'
-import { Tabulator } from 'tabulator-tables';
+import rawLog from '@bksLogger'
+import { monthAgo } from '@/common/date';
+import { SmartLocalStorage } from '@/common/LocalStorage';
+import { CellComponent } from 'tabulator-tables';
+import { AppEvent } from '@/common/AppEvent';
 
 const log = rawLog.scope('fk_click');
 
 export const FkLinkMixin = {
   methods: {
 
-    async fkClick(rawKeyData, cell: Tabulator.CellComponent) {
+    // TODO: merge in community, get keyData changes, integrate here
+    // check out TableTable first
+    fkColumn(column, keyDatas) {
+      const keyWidth = 40
+      const icon = () => "<i class='material-icons fk-link'>launch</i>"
+      const tooltip = () => {
+        if (keyDatas.length == 1)
+          return `View record in ${keyDatas[0].toTable}`
+        else
+          return `View records in ${(keyDatas.map(item => item.toTable).join(', ') as string).replace(/, (?![\s\S]*, )/, ', or ')}`
+      }
+      const clickMenu = [];
+      if (keyDatas.length > 1) {
+        keyDatas.forEach(x => {
+          clickMenu.push({
+            label: `<x-menuitem><x-label>${x.toTable}(${x.toColumn})</x-label></x-menuitem>`,
+            action: (_e, cell) => {
+              this.fkClick(x, cell);
+            }
+          })
+        })
+      }
+
+      const fkClick = (_e, cell) => this.fkClick(keyDatas[0], cell)
+
+      const keyResult = {
+        headerSort: false,
+        download: false,
+        width: keyWidth,
+        resizable: false,
+        field: (keyDatas[0].fromColumn ?? column.field) + '-link--bks',
+        title: "",
+        cssClass: "foreign-key-button",
+        cellClick: clickMenu.length === 0 ? fkClick : null,
+        formatter: icon,
+        clickMenu,
+        tooltip
+      }
+      column.cssClass = 'foreign-key'
+      return keyResult
+    },
+
+    async fkClick(rawKeyData, cell: CellComponent) {
       log.debug('fk click', rawKeyData)
       const fromColumn = cell.getField().replace(/-link--bks$/g, "")
 
@@ -69,10 +114,24 @@ export const FkLinkMixin = {
         });
       });
 
+      let openJsonViewer = true
+      if (this.$store.getters.isCommunity) {
+        const lastOpen = SmartLocalStorage.getDate('openJSONViewerViaFK__community')
+        if (!lastOpen || lastOpen < monthAgo()) {
+          SmartLocalStorage.setDate('openJSONViewerViaFK__community', new Date())
+        } else {
+          openJsonViewer = false
+        }
+      }
+
       const payload = {
-        table, filters, titleScope: values.join(',')
+        table, filters, titleScope: values.join(','),
       }
       this.$root.$emit('loadTable', payload)
+      if (openJsonViewer) {
+        this.trigger(AppEvent.selectSecondarySidebarTab, "json-viewer")
+        this.trigger(AppEvent.toggleSecondarySidebar, true)
+      }
     },
 
   }

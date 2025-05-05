@@ -2,15 +2,49 @@
 
 - A funcionalidade de atualização automática estava quebrada nas versões anteriores a 1.7.5. Por favor, faça atualização de forma manual a partir da seção de [release](https://github.com/beekeeper-studio/beekeeper-studio/releases).
 
-# Beekeeper Studio
+
+![image](https://user-images.githubusercontent.com/279769/203650152-4a34af1f-8a38-47cf-a273-d34d1c84feeb.png)
 
 Beekeeper Studio é um editor e gerenciador SQL de banco de dados multiplataforma, disponível para Linux, MacOS e Windows.
 
-Beekeeper Studio usa a licença MIT, portanto é livre e grátis.
+Beekeeper Studio usa a licença GPLv3, portanto é livre e grátis.
 
 Baixe agora [do nosso site](https://beekeeperstudio.io).
 
 Curtiu o Beekeeper Studio e quer contribuir, mas não com código? [Temos algumas ideias pra você!](https://github.com/beekeeper-studio/beekeeper-studio/issues/287)
+
+## Suporte a Bancos de Dados
+
+<!-- SUPPORT_BEGIN -->
+
+| Database                                                 | Support                      | Community | Ultimate |                             Beekeeper Links |
+| :------------------------------------------------------- | :--------------------------- | :-------: | :------: | -----------------------------------------: |
+| [PostgreSQL](https://postgresql.org)                     | ⭐ Full Support              |    ✅     |    ✅    |  [Features](https://beekeeperstudio.io/db/postgres-client) |
+| [MySQL](https://www.mysql.com/)                          | ⭐ Full Support              |    ✅     |    ✅    |  [Features](https://beekeeperstudio.io/db/mysql-client)|
+| [SQLite](https://sqlite.org)                             | ⭐ Full Support              |    ✅     |    ✅    |   [Features](https://beekeeperstudio.io/db/sqlite-client), [Docs](https://docs.beekeeperstudio.io/user_guide/connecting/sqlite) |
+| [SQL Server](https://www.microsoft.com/en-us/sql-server) | ⭐ Full Support              |    ✅     |    ✅    |   [Features](https://beekeeperstudio.io/db/sql-server-client)  |
+| [Amazon Redshift](https://aws.amazon.com/redshift/)      | ⭐ Full Support              |    ✅     |    ✅    |    [Features](https://beekeeperstudio.io/db/redshift-client) |
+| [CockroachDB](https://www.cockroachlabs.com/)            | ⭐ Full Support              |    ✅     |    ✅    | [Features](https://beekeeperstudio.io/db/cockroachdb-client)|
+| [MariaDB](https://mariadb.org/)                          | ⭐ Full Support              |    ✅     |    ✅    |     [Features](https://beekeeperstudio.io/db/mariadb-client) |
+| [TiDB](https://pingcap.com/products/tidb/)               | ⭐ Full Support              |    ✅     |    ✅    |        [Features](https://beekeeperstudio.io/db/tidb-client) |
+| [Google BigQuery](https://cloud.google.com/bigquery)     | ⭐ Full Support             |    ✅     |    ✅    |    [Features](https://beekeeperstudio.io/db/google-big-query-client), [Docs](https://docs.beekeeperstudio.io/user_guide/connecting/bigquery) |
+| [Oracle Database](https://www.oracle.com/database/)      | ⭐ Full Support              |           |    ✅    |      [Features](https://beekeeperstudio.io/db/oracle-client), [Docs](https://docs.beekeeperstudio.io/user_guide/connecting/oracle) |
+| [Cassandra](http://cassandra.apache.org/)                | ⭐ Full Support              |           |    ✅    |   [Features](https://beekeeperstudio.io/db/cassandra-client) |
+| [Firebird](https://firebirdsql.org/)                     | ⭐ Full Support              |           |    ✅    |    [Features](https://beekeeperstudio.io/db/firebird-client), [Docs](https://docs.beekeeperstudio.io/user_guide/connecting/firebird) |
+| [LibSQL](https://libsql.org/)                            | ⭐ Full Support               |           |    ✅    |      [Features](https://beekeeperstudio.io/db/libsql-client) |
+| [ClickHouse](https://clickhouse.tech/)                   | ⭐ Full Support                |           |    ✅    |  -- |
+| [DuckDB](https://duckdb.org/)                            | ⭐ Full Support                |           |    ✅    |      -- |
+| [MongoDB](https://www.mongodb.com/)                      | 🧪 Alpha Support (5.1+)               |           |    ✅    |     -- |
+| [Snowflake](https://www.snowflake.com/)                  | ⏳ Coming Soon                |           |    ✅    |   -- |
+| [Trino](https://trino.io/) / [Presto](https://prestodb.io/) | ⏳ Coming Soon                |           |    ✅    |      -- |
+| [Redis](https://redis.io/)                               | 🗓️ Planned               |           |    ✅    |       -- |
+| [DynamoDB](https://aws.amazon.com/dynamodb/)             | 🗓️ Planned               |           |    ✅    |       -- |
+
+
+
+
+<!-- SUPPORT_END -->
+
 
 # Funcionalidades
 
@@ -26,14 +60,13 @@ Principais funcionalidades: é leve 🍫, rápido 🏎 e você realmente vai gos
 
 Uma de nossas frustrações com outros editores e gerenciadores SQL de código aberto é que eles usam uma abordagem de "pia na cozinha" para suas funcionalidades, adicionando tantas funcionalidades que tornam a interface desordenada e difícil de navegar. Nós queremos um visual legal, uma ferramenta SQL de código aberto que seja poderosa, mas fácil de usar. Não encontramos uma que atendesse esses requisitos, então resolvemos criar uma.
 
-![Beekeeper Studio Screenshot](https://app.duckdocs.com/sites/2/pages/introduction/images/1)
-
 Beekeeper Studio suporta conexão com os seguintes bancos de dados:
 
 - PostgreSQL
 - SQLite
 - MySQL
 - MariaDB
+- TiDB
 - SQL Server
 - Amazon Redshift
 - CockroachDB

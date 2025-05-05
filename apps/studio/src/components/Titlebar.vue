@@ -21,9 +21,41 @@
       </div>
       <div
         class="titlebar-actions"
-        v-if="!$config.isMac"
       >
-        <template>
+        <div class="titlebar-actions-extra">
+          <button
+            class="btn btn-link"
+            @dblclick.prevent.stop
+            @click.prevent="togglePrimarySidebar"
+            title="Toggle Primary Sidebar"
+            v-if="connected"
+          >
+            <i
+              class="material-symbols-outlined"
+              :style="{
+                'font-variation-settings': primarySidebarOpen ? `'FILL' 1` : `'FILL' 0`
+              }"
+            >dock_to_right</i>
+          </button>
+          <button
+            class="btn btn-link"
+            @dblclick.prevent.stop
+            @click.prevent="toggleSecondarySidebar"
+            title="Toggle Secondary Sidebar"
+            v-if="connected"
+          >
+            <i
+              class="material-symbols-outlined"
+              :style="{
+                'font-variation-settings': secondarySidebarOpen ? `'FILL' 1` : `'FILL' 0`
+              }"
+            >dock_to_left</i>
+          </button>
+        </div>
+        <div
+          v-if="!$config.isMac"
+          class="window-controls-container"
+        >
           <button
             class="btn btn-link"
             id="minimize"
@@ -56,62 +88,67 @@
           >
             <i class="material-icons">clear</i>
           </button>
-        </template>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import { mapState } from 'vuex'
-import AppMenu from './menu/NewAppMenu'
-import platformInfo from '@/common/platform_info'
+import { mapState, mapGetters, mapActions } from 'vuex'
+import { AppEvent } from "@/common/AppEvent";
+import AppMenu from './menu/NewAppMenu.vue'
 export default {
   components: { AppMenu },
   data() {
     return {
-      maximized: this.$native.getCurrentWindow()?.isMaximized(),
-      fullscreen: this.$native.getCurrentWindow()?.isFullScreen(),
+      maximized: false,
+      fullscreen: false
     }
   },
   computed: {
-    ...mapState(['windowTitle']),
+    ...mapState(['windowTitle', 'connected']),
+    ...mapState('sidebar', ['secondarySidebarOpen', 'primarySidebarOpen']),
   },
   mounted() {
-    this.getWindow()?.on('maximize', () => {
+    window.main.onMaximize(() => {
       this.maximized = true
-    })
-    this.getWindow()?.on('unmaximize', () => {
+    }, this.$util.sId);
+
+    window.main.onUnmaximize(() => {
       this.maximized = false
-    })
-    this.getWindow()?.on('enter-full-screen', () => {
+    }, this.$util.sId);
+
+    window.main.onEnterFullscreen(() => {
       this.fullscreen = true
-    })
-    this.getWindow()?.on('leave-full-screen', () => {
+    }, this.$util.sId);
+
+    window.main.onLeaveFullscreen(() => {
       this.fullscreen = false
-    })
+    }, this.$util.sId);
   },
   methods: {
-    getWindow() {
-      return this.$native.getCurrentWindow()
+    togglePrimarySidebar() {
+      this.trigger(AppEvent.togglePrimarySidebar)
     },
-    isMaximized() {
-      return this.getWindow()?.isMaximized()
+    toggleSecondarySidebar() {
+      this.trigger(AppEvent.toggleSecondarySidebar)
     },
-    minimizeWindow() {
-      this.getWindow()?.minimize();
+    async minimizeWindow() {
+      await window.main.minimizeWindow();
     },
-    maximizeWindow() {
+    async maximizeWindow() {
+      const isMaximized = await window.main.isMaximized();
       if (this.fullscreen) {
-        this.getWindow()?.setFullScreen(false);
-      } else if (this.isMaximized()) {
-        this.getWindow()?.unmaximize();
+        await window.main.setFullScreen(false)
+      } else if (isMaximized) {
+        await window.main.unmaximizeWindow()
       } else {
-        this.getWindow()?.maximize();
+        await window.main.maximizeWindow();
       }
     },
-    closeWindow() {
-      this.getWindow()?.close()
+    async closeWindow() {
+      await window.main.closeWindow();
     }
   }
 }

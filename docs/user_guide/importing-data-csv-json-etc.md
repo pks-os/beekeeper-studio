@@ -2,6 +2,7 @@
 title: Importing Data (csv, json, etc)
 summary: "Take your data, and import it into Beekeeper Studio using our easy point-and-click interface"
 old_url: "https://docs.beekeeperstudio.io/docs/importing-data-csv-json-etc"
+icon: material/import
 ---
 
 ## Supported Import Formats
@@ -9,9 +10,9 @@ old_url: "https://docs.beekeeperstudio.io/docs/importing-data-csv-json-etc"
 2. More to come. Stay Tuned!
 
 ## Step 1: Select File
-- Start by finding the table you want to import data into and right click it. Click `Import From CSV`.
+- Start by finding the table you want to import data into and right click it. Click `Import From File`.
 
-![Select Import From CSV](../assets/images/importing-data-csv-json-etc-844e-148.png)
+![Select Import From File](../assets/images/importing-data-csv-json-etc-844e-148.png)
 
 - Select which file to import.
 

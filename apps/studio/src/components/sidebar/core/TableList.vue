@@ -1,6 +1,6 @@
 <template>
   <div
-    class="flex-col expand"
+    class="flex-col expand table-list-component"
     ref="wrapper"
   >
     <!-- Filter -->
@@ -21,6 +21,7 @@
               <i class="clear material-icons">cancel</i>
             </x-button>
             <x-button
+              v-if="this.dialect != 'mongodb'"
               :title="entitiesHidden ? 'Filter active' : 'No filters'"
               class="btn btn-fab btn-link action-item"
               :class="{active: entitiesHidden}"
@@ -71,7 +72,6 @@
       <pinned-table-list
         :all-expanded="allExpanded"
         :all-collapsed="allCollapsed"
-        :connection="connection"
       />
     </div>
 
@@ -123,9 +123,10 @@
           >
             <i class="material-icons">refresh</i>
           </button>
+          <!-- FIXME (@day): we don't want to have per-db testing in the UI -->
           <button
             @click.prevent="newTable"
-            title="New Table"
+            :title="`New ${this.connectionType === 'mongodb' ? 'Collection' : 'Table'}`"
             class="create-table"
             :disabled="tablesLoading"
             v-if="canCreateTable"
@@ -142,7 +143,12 @@
         class="empty truncate"
         v-if="!tablesLoading && (!tables || tables.length === 0)"
       >
-        There are no entities in<br> <span>{{ database }}</span>
+        <p class="no-entities" v-if="database">
+          There are no entities in the <strong>{{ database }}</strong> database
+        </p>
+        <p class="no-entities" v-else>
+          Please select a database to see tables, views, and other entities
+        </p>
       </div>
     </nav>
 
@@ -166,12 +172,14 @@
   import { AppEvent } from '@/common/AppEvent'
   import VirtualTableList from './table_list/VirtualTableList.vue'
   import { TableOrView, Routine } from "@/lib/db/models";
+import { matches } from '@/common/transport/TransportPinnedEntity'
 
   export default {
     mixins: [TableFilter, TableListContextMenus],
     components: { PinnedTableList, HiddenEntitiesModal, VirtualTableList },
     data() {
       return {
+        isDev: window.platformInfo.isDevelopment,
         tableLoadError: null,
         allExpanded: null,
         allCollapsed: null,
@@ -184,6 +192,11 @@
       }
     },
     computed: {
+      ...mapGetters(['dialectData', 'dialect']),
+      ...mapState({currentDatabase: 'database'}),
+      createDisabled() {
+        return !!this.dialectData.disabledFeatures.createTable
+      },
       totalEntities() {
         return this.tables.length + this.routines.length - this.hiddenEntities.length
       },
@@ -234,8 +247,8 @@
           this.$refs.tables
         ]
       },
-      supportsRoutines() {
-        return this.connection.supportedFeatures().customRoutines
+      async supportsRoutines() {
+        return this.supportedFeatures.customRoutines
       },
       canCreateTable() {
         return !this.dialectData.disabledFeatures?.createTable
@@ -248,7 +261,7 @@
           { event: AppEvent.togglePinTableList, handler: this.togglePinTableList },
         ]
       },
-      ...mapState(['selectedSidebarItem', 'tables', 'routines', 'connection', 'database', 'tablesLoading']),
+      ...mapState(['selectedSidebarItem', 'tables', 'routines', 'database', 'tablesLoading', 'supportedFeatures', 'connectionType']),
       ...mapGetters(['filteredTables', 'filteredRoutines', 'dialectData']),
       ...mapGetters({
           pinnedEntities: 'pins/pinnedEntities',
@@ -259,6 +272,9 @@
       }),
     },
     watch: {
+      currentDatabase(){
+        this.filterQuery = null
+      },
       loadedWithPins (loaded, oldloaded) {
         if (loaded && (!oldloaded)) {
           this.$nextTick(() => {
@@ -285,21 +301,24 @@
       },
       refreshPinnedColumns() {
         this.orderedPins.forEach((p) => {
-          const t = this.tables.find((table) => p.matches(table))
+          const t = this.tables.find((table) => matches(p, table))
           if (t) {
             this.$store.dispatch('updateTableColumns', t)
           }
         })
       },
-      refreshTables() {
-        this.$store.dispatch('updateRoutines')
-        this.$store.dispatch('updateTables').then(() => {
+      async refreshTables() {
+        try {
+          this.$store.dispatch('updateRoutines')
+          await this.$store.dispatch('updateTables')
           // When we refresh sidebar tables we need to also refresh:
           // 1. Any open tables
           // 2. Any pinned tables
           this.refreshExpandedColumns()
           this.refreshPinnedColumns()
-        })
+        } catch (ex) {
+          this.$noty.error(`Unable to refresh tables ${ex.message}`)
+        }
       },
       newTable() {
         this.$root.$emit(AppEvent.createTable)
@@ -326,10 +345,9 @@
       }
     },
     mounted() {
-      document.addEventListener('mousedown', this.maybeUnselect)
       const components = [this.$refs.pinned, this.$refs.tables]
       this.split = Split(components, {
-        elementStyle: (dimension, size) => ({
+        elementStyle: (_dimension, size) => ({
             'flex-basis': `calc(${size}%)`,
         }),
         direction: 'vertical',
@@ -346,3 +364,13 @@
     }
   }
 </script>
+<style scoped>
+  .table-action-wrapper{
+    display: flex;
+    flex-direction: row;
+  }
+  p.no-entities {
+    width: 100%;
+    white-space:normal;
+  }
+</style>

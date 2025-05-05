@@ -1,7 +1,7 @@
 <template>
   <virtual-list
     ref="vList"
-    class="list-body"
+    class="virtual-table-list list-body"
     :class="{ 'list-body-empty': displayItems.length === 0 }"
     :data-key="'key'"
     :data-sources="displayItems"
@@ -31,10 +31,9 @@ import ItemComponent from "./Item.vue";
 import VirtualList from "vue-virtual-scroll-list";
 import { AppEvent } from "@/common/AppEvent";
 import { mapGetters, mapState } from "vuex";
-import { PinnedEntity } from "@/common/appdb/models/PinnedEntity";
 import { entityId } from "@/common/utils";
-import globals from '@/common/globals';
 import "scrollyfills";
+import { TransportPinnedEntity } from "@/common/transport/TransportPinnedEntity";
 
 type Entity = TableOrView | Routine | string;
 
@@ -84,7 +83,7 @@ export default Vue.extend({
       items: [],
       displayItems: [],
       itemComponent: ItemComponent,
-      estimateItemHeight: globals.tableListItemHeight, // height of collapsed item
+      estimateItemHeight: this.$bksConfig.ui.tableList.itemHeight, // height of collapsed item
       keeps: 30,
       generated: false,
     };
@@ -144,7 +143,7 @@ export default Vue.extend({
             contextMenu: this.tableMenuOptions,
             parent,
             level: noFolder ? 0 : 1,
-            pinned: this.pins.find((pin: PinnedEntity) => pin.entity === table),
+            pinned: this.pins.find((pin: TransportPinnedEntity) => pin.entity === table),
             loadingColumns: false,
           });
         });
@@ -164,7 +163,7 @@ export default Vue.extend({
             parent,
             level: noFolder ? 0 : 1,
             pinned: this.pins.find(
-              (pin: PinnedEntity) => pin.entity === routine
+              (pin: TransportPinnedEntity) => pin.entity === routine
             ),
           });
         });
@@ -179,12 +178,17 @@ export default Vue.extend({
       const items: Item[] = this.items;
 
       for (const item of items) {
+        // Skip rendering routines in minimal mode
+        if (this.$store.getters.minimalMode && item.type === 'routine') {
+          continue;
+        }
+
         if (!item.hidden && !item.parent.hidden && item.parent.expanded) {
           displayItems.push(item);
 
           // Summarizing the total height of all list items to get the average height
 
-          totalHeight += globals.tableListItemHeight; // height of list item
+          totalHeight += this.$bksConfig.ui.tableList.itemHeight; // height of list item
 
           if (item.expanded) {
             if (item.type === "table") {
@@ -201,7 +205,7 @@ export default Vue.extend({
       if (displayItems.length > 0) {
         this.estimateItemHeight = totalHeight / displayItems.length;
       } else {
-        this.estimateItemHeight = globals.tableListItemHeight;
+        this.estimateItemHeight = this.$bksConfig.ui.tableList.itemHeight;
       }
       this.displayItems = displayItems;
     },
@@ -297,6 +301,7 @@ export default Vue.extend({
     ...mapGetters({
       defaultSchema: "defaultSchema",
       schemaTables: "schemaTables",
+      minimalMode: "minimalMode",
       hiddenEntities: "hideEntities/databaseEntities",
       hiddenSchemas: "hideEntities/databaseSchemas",
     }),
@@ -305,6 +310,9 @@ export default Vue.extend({
   watch: {
     schemaTables() {
       this.generateItems();
+      this.generateDisplayItems();
+    },
+    minimalMode() {
       this.generateDisplayItems();
     },
   },
